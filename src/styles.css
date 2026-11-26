@@ -234,3 +234,25 @@ kbd {
 #shop div.off { opacity: .5; }
 #shop em { font-style: normal; white-space: nowrap; margin-left: 12px; font-family: var(--mono); font-size: 13px; }
 #shop p { margin-top: 10px; font-size: 12px; color: var(--cement); }
+
+/* Mapa completo */
+#worldmap-wrap { position: fixed; inset: 0; z-index: 8; background: #12151a; color: #e9e6df; font-family: var(--font); }
+#worldmap-wrap.hidden { display: none; }
+#worldmap { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; image-rendering: pixelated; }
+#worldmap-title { position: absolute; left: 24px; top: 18px; font: 900 30px/1 var(--font); letter-spacing: .06em; text-shadow: 3px 3px 0 var(--rust); pointer-events: none; }
+#worldmap-info {
+  position: absolute; left: 50%; top: 18px; transform: translateX(-50%); padding: 7px 16px; pointer-events: none;
+  background: rgba(23, 26, 32, .85); border-left: 3px solid #8fb2e8; font-size: 15px; color: #d8d5ce; white-space: nowrap;
+}
+#worldmap-info b { color: #efe9dc; font-weight: 700; }
+#worldmap-legend {
+  position: absolute; right: 18px; top: 18px; padding: 10px 12px; background: rgba(23, 26, 32, .85);
+  border-left: 2px solid var(--slate); font-size: 13px; color: #d8d5ce; pointer-events: none;
+}
+#worldmap-legend b { display: block; font-size: 11px; letter-spacing: .24em; color: var(--warm); margin-bottom: 4px; }
+#worldmap-legend div { display: flex; align-items: center; gap: 6px; line-height: 22px; }
+#worldmap-tip {
+  position: absolute; left: 0; top: 0; padding: 3px 8px; background: rgba(23, 26, 32, .92); font-size: 13px;
+  border-left: 2px solid var(--warm); pointer-events: none; white-space: nowrap; display: none;
+}
+#worldmap-help { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); font-size: 13px; color: var(--cement); pointer-events: none; white-space: nowrap; }

@@ -1,3 +1,5 @@
+import { drawIcon, drawPlayerArrow, drawRoute, EDGE_KINDS, type MapIcon } from './mapIcons';
+
 export interface Blip { x: number; z: number; color: string; size?: number; }
 
 const C = { night: '#202b3a', slate: '#536477', cement: '#858b91', coal: '#171a20', rust: '#b75b32', warm: '#d4c29a', bone: '#e9e6df' };
@@ -256,11 +258,19 @@ export class Hud {
     c.beginPath(); c.moveTo(W / 2 - 5, 30); c.lineTo(W / 2 + 5, 30); c.lineTo(W / 2, 25); c.closePath(); c.fill();
   }
 
-  /** Minimapa cuadrado que gira con la cámara (arriba = hacia donde miras). */
-  drawMinimap(px: number, pz: number, camYaw: number, playerHeading: number, blips: Blip[]) {
+  /** Imagen del mapa (con la paleta del juego) para el mapa completo. */
+  get mapImage() { return this.tintedMap; }
+  private mmT = 0;
+
+  /**
+   * Minimapa que gira con la cámara (arriba = hacia donde miras). Se aleja con la velocidad, dibuja la ruta
+   * del GPS y los iconos; lo importante (misión, destino) se queda en el borde si cae fuera.
+   */
+  drawMinimap(px: number, pz: number, camYaw: number, playerHeading: number, icons: MapIcon[],
+    route: { pts: Float32Array; color: string } | null, viewM: number, info: string | null, dt = 0) {
+    this.mmT += dt;
     const c = this.mctx, W = this.mm.width, R = W / 2;
     const map = this.tintedMap;
-    const viewM = 360;
     const imgScale = Number(map.dataset.scale);
     const ix0 = Number(map.dataset.x0), iz0 = Number(map.dataset.z0);
     const s = W / viewM;
@@ -272,21 +282,32 @@ export class Hud {
     c.scale(s / imgScale, s / imgScale);
     c.drawImage(map, -(px - ix0) * imgScale, -(pz - iz0) * imgScale);
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.translate(R, R);
-    c.rotate(camYaw - Math.PI);
-    for (const b of blips) {
-      const bx = (b.x - px) * s, bz = (b.z - pz) * s;
-      const cx = Math.max(-R + 8, Math.min(R - 8, bx)), cz = Math.max(-R + 8, Math.min(R - 8, bz));
-      c.fillStyle = b.color;
-      c.save(); c.translate(cx, cz); c.rotate(Math.PI / 4);
-      c.fillRect(-(b.size ?? 3), -(b.size ?? 3), (b.size ?? 3) * 2, (b.size ?? 3) * 2);
+    // de mundo a pantalla (girado con la cámara)
+    const rot = camYaw - Math.PI, cr = Math.cos(rot), sr = Math.sin(rot);
+    const toScreen = (x: number, z: number): [number, number] => {
+      const dx = (x - px) * s, dz = (z - pz) * s;
+      return [R + dx * cr - dz * sr, R + dx * sr + dz * cr];
+    };
+    if (route) {
+      c.save();
+      c.beginPath(); c.rect(0, 0, W, W); c.clip();
+      drawRoute(c, route.pts, toScreen, route.color, 4);
       c.restore();
     }
-    c.rotate(-playerHeading + Math.PI);
-    c.fillStyle = C.bone; c.strokeStyle = C.coal; c.lineWidth = 1.5;
-    c.beginPath(); c.moveTo(0, -8); c.lineTo(5.5, 6); c.lineTo(0, 3); c.lineTo(-5.5, 6); c.closePath();
-    c.fill(); c.stroke();
-    c.restore();
+    // primero lo menudo, encima lo importante
+    const order: Record<string, number> = { npc: 0, bar: 1, tienda: 1, landmark: 1, police: 2, car: 3, armeria: 4, taller: 4, mission: 5, waypoint: 6, target: 7 };
+    for (const ic of [...icons].sort((a, b) => (order[a.kind] ?? 0) - (order[b.kind] ?? 0))) {
+      let [sx, sy] = toScreen(ic.x, ic.z);
+      const out = sx < 8 || sy < 8 || sx > W - 8 || sy > W - 8;
+      if (out) {
+        if (!EDGE_KINDS.has(ic.kind)) continue;
+        // pegado al borde, en la dirección correcta
+        const dx = sx - R, dy = sy - R, k = (R - 10) / Math.max(Math.abs(dx), Math.abs(dy));
+        sx = R + dx * k; sy = R + dy * k;
+      }
+      drawIcon(c, ic, sx, sy, ic.kind === 'npc' || ic.kind === 'bar' || ic.kind === 'tienda' ? 0.9 : 1, this.mmT);
+    }
+    drawPlayerArrow(c, R, R, -playerHeading + camYaw);
     // norte en el borde
     const na = camYaw - 1.5 * Math.PI;
     const k = (R - 10) / Math.max(Math.abs(Math.cos(na)), Math.abs(Math.sin(na)));
@@ -294,5 +315,13 @@ export class Hud {
     c.fillStyle = C.rust; c.fillRect(nx - 7, ny - 7, 14, 14);
     c.fillStyle = C.bone; c.font = `700 11px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText('N', nx, ny + 1);
+    // distancia y tiempo hasta el destino
+    if (info) {
+      c.font = `700 12px ${FONT}`;
+      const w = c.measureText(info).width + 14;
+      c.fillStyle = 'rgba(23,26,32,0.8)'; c.fillRect(R - w / 2, W - 22, w, 18);
+      c.fillStyle = route?.color ?? C.warm; c.fillText(info, R, W - 12.5);
+    }
+    c.restore();
   }
 }

@@ -36,7 +36,7 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 | R (a pie) | Recargar |
 | J | Lluvia sí / no |
 | P | Imagen: retro → retro fuerte → nítida |
-| M | Música y sonido → sin música → silencio |
+| M | Mapa completo: marcar destino y ruta más rápida (la música y el volumen están en la pausa) |
 | N | Acelerar el reloj (x1 → x20 → x120) |
 | H | Mostrar / ocultar ayuda |
 | Esc | Pausa: continuar, guardar, cargar, nueva partida y opciones |
@@ -44,6 +44,21 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar, stick derecho cámara,
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
+
+## Versión 0.11: minimapa inteligente, mapa completo y GPS
+
+- **GPS** (`src/systems/navigation.ts`): A* sobre la red viaria real con montículo binario. En coche busca la
+  ruta más **rápida** (tiempo según el tipo de vía y un pequeño coste por cruce) y respeta los sentidos únicos;
+  a pie, la más corta por aceras, plazas y calles peatonales. Se recalcula sola cada segundo (o antes si cambia
+  el destino o te subes/bajas del coche). Con una misión activa, la ruta lleva al objetivo de la misión.
+- **Mapa completo** (tecla M, cruceta abajo en el mando): mover arrastrando o con WASD, zoom con la rueda o Q/E,
+  clic para marcar destino, clic derecho para quitarlo, C para centrar. Nombres de calles según el zoom (sin
+  solaparse), lugares de interés, misiones, armería, taller, bares y tiendas, tu coche y la policía, con leyenda,
+  escala y el nombre de la calle bajo el ratón. Abrirlo pausa el juego.
+- **Minimapa**: se aleja con la velocidad del coche, dibuja la ruta, distancia y tiempo estimado abajo, iconos
+  propios (misión, objetivo, destino, armería, taller, bar, tienda, coche, policía) y deja en el borde solo lo
+  importante cuando cae fuera.
+- La tecla M deja de cambiar la música: música y volumen están en el menú de pausa.
 
 ## Versión 0.10: misiones, armería y taller
 

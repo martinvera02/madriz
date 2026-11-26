@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Marker, ARMERIA_AT, TALLER_AT, type MissionCtx } from './missions';
 import { WEAPONS, type Combat } from './combat';
+import type { MapIcon } from '../ui/mapIcons';
 
 /**
  * Tiendas: la armería de la calle de la Montera (armas, munición y botiquín) y el taller de Embajadores
@@ -48,6 +49,13 @@ export class Shops {
       ammo('subfusil', 60, 60, 'Balas de subfusil'),
       ammo('escopeta', 12, 45, 'Cartuchos'),
       { name: 'Botiquín (vida al 100 %)', price: 25, can: () => (ctx.player.health >= 99 ? 'Estás perfectamente' : null), buy: () => { ctx.player.health = 100; } },
+    ];
+  }
+
+  icons(): MapIcon[] {
+    return [
+      { x: this.armeria.pos.x, z: this.armeria.pos.z, kind: 'armeria', label: 'Armería Montera' },
+      { x: this.taller.pos.x, z: this.taller.pos.z, kind: 'taller', label: 'Taller de Embajadores · reparar y despistar a la policía' },
     ];
   }
 

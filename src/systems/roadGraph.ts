@@ -88,6 +88,24 @@ export class RoadGraph {
     return best;
   }
 
+  /** Aristas en un radio de ~50 m, con la distancia al punto y el parámetro de la proyección (m). */
+  edgesNear(x: number, z: number): { e: Edge; d: number; t: number }[] {
+    if (!this.cells) this.buildIndex();
+    const out: { e: Edge; d: number; t: number }[] = [];
+    const seen = new Set<number>();
+    const ci = Math.floor(x / 25), cj = Math.floor(z / 25);
+    for (let di = -2; di <= 2; di++) for (let dj = -2; dj <= 2; dj++) {
+      for (const e of this.cells!.get(`${ci + di},${cj + dj}`) ?? []) {
+        if (seen.has(e.id)) continue;
+        seen.add(e.id);
+        const ax = this.x(e.from), az = this.z(e.from);
+        const t = Math.max(0, Math.min(e.len, (x - ax) * e.dx + (z - az) * e.dz));
+        out.push({ e, t, d: Math.hypot(x - ax - e.dx * t, z - az - e.dz * t) });
+      }
+    }
+    return out;
+  }
+
   x(n: number) { return this.N[n * 2]; }
   z(n: number) { return this.N[n * 2 + 1]; }
 

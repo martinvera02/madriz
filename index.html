@@ -45,13 +45,13 @@
         <div><kbd>Q</kbd> claxon · <kbd>L</kbd> luces · <kbd>R</kbd> enderezar</div>
         <div><kbd>E</kbd> hablar · entrar en bares y tiendas · pedir · empezar misión <span>(marcadores naranjas)</span></div>
         <div><kbd>1</kbd>–<kbd>5</kbd> / rueda armas · <kbd>Clic dcho.</kbd> apuntar · <kbd>Clic</kbd> disparar / golpear · <kbd>R</kbd> recargar</div>
-        <div><kbd>J</kbd> lluvia · <kbd>P</kbd> píxel · <kbd>N</kbd> reloj · <kbd>M</kbd> música / sonido</div>
+        <div><kbd>M</kbd> mapa y GPS · <kbd>J</kbd> lluvia · <kbd>P</kbd> píxel · <kbd>N</kbd> reloj</div>
         <div><kbd>Esc</kbd> pausa · guardar · opciones · <kbd>H</kbd> ocultar esta ayuda</div>
       </div>
     </div>
     <div id="start">
       <div class="start-inner">
-        <div class="kicker">MADRID · ESCALA 1:1 · PROTOTIPO 0.10</div>
+        <div class="kicker">MADRID · ESCALA 1:1 · PROTOTIPO 0.11</div>
         <h1>MADRIZ</h1>
         <div class="tagline">La ciudad no duerme. Tú tampoco.</div>
         <div class="start-buttons">
@@ -62,6 +62,14 @@
         <p id="loading">Preparando…</p>
         <p class="small"><kbd>WASD</kbd> <kbd>Ratón</kbd> <kbd>F</kbd> coger coches <kbd>V</kbd> primera persona · mando compatible · con sonido</p>
       </div>
+    </div>
+    <div id="worldmap-wrap" class="hidden">
+      <canvas id="worldmap"></canvas>
+      <div id="worldmap-title">MAPA · MADRID CENTRO</div>
+      <div id="worldmap-info"></div>
+      <div id="worldmap-legend"></div>
+      <div id="worldmap-tip"></div>
+      <div id="worldmap-help">Clic: marcar destino · clic derecho o clic en la chincheta: quitarlo · rueda o Q/E: zoom · arrastrar o WASD: mover · <kbd>C</kbd> centrar · <kbd>M</kbd> / <kbd>Esc</kbd> cerrar</div>
     </div>
     <div id="pause" class="hidden">
       <div class="pause-panel">

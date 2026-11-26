@@ -33,6 +33,9 @@ import { Police } from './systems/police';
 import { Pickups } from './systems/pickups';
 import { Missions, type MissionCtx } from './systems/missions';
 import { Shops } from './systems/shops';
+import { Navigation, fmtDist, fmtEta } from './systems/navigation';
+import { WorldMap } from './ui/worldMap';
+import type { MapIcon } from './ui/mapIcons';
 import { loadGame, saveGame, deleteGame, loadSettings, saveSettings, describeSaveTime, describePlayed, type SaveData } from './systems/save';
 import { RETRO_PRESETS } from './render/retroPost';
 import { shopDoors, type ShopDoor } from './world/shopfronts';
@@ -351,6 +354,64 @@ async function main() {
   };
   const missions = new Missions(missionCtx);
   const shops = new Shops(missionCtx, combat, { get: () => money, pay: (eur) => pay(eur) });
+  // ---------- GPS y mapa completo ----------
+  const nav = new Navigation(carGraph, walkGraph);
+  const worldMap = new WorldMap(data, hud.mapImage, {
+    setWaypoint: (x, z) => nav.setWaypoint(x, z),
+    clearWaypoint: () => nav.clearWaypoint(),
+    waypoint: () => nav.waypoint,
+    placeName: (x, z) => placeName(x, z),
+  });
+  let mapOpen = false;
+  const cap = (t: string) => t.charAt(0) + t.slice(1).toLowerCase();
+  /** Iconos del mapa. `nearX/Z` y `r`: solo bares y tiendas cercanos (minimapa). */
+  const mapIcons = (nearX: number, nearZ: number, r: number): MapIcon[] => {
+    const out: MapIcon[] = [];
+    // un icono por local (cada fachada registra su puerta) y, en el minimapa, solo los más cercanos
+    const seen = new Set<string>();
+    const shopsNear: (MapIcon & { d: number })[] = [];
+    for (const d of shopDoors.values()) {
+      const dist = Math.hypot(d.x - nearX, d.z - nearZ);
+      if (dist > r) continue;
+      const key = `${d.kind}${d.name}${Math.round(d.x / 30)},${Math.round(d.z / 30)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      shopsNear.push({ x: d.x, z: d.z, kind: d.kind === 'bar' ? 'bar' : 'tienda', label: cap(d.name), d: dist });
+    }
+    shopsNear.sort((p, q) => p.d - q.d);
+    if (r < 1e6) {
+      // minimapa: los 8 más cercanos, separados entre sí
+      const pick: MapIcon[] = [];
+      for (const ic of shopsNear) {
+        if (pick.length >= 8) break;
+        if (pick.some((o) => Math.hypot(o.x - ic.x, o.z - ic.z) < 14)) continue;
+        pick.push(ic);
+      }
+      out.push(...pick);
+    } else out.push(...shopsNear);
+    for (const n of routines.npcs) if (n.visible && n.alive) out.push({ x: n.pos.x, z: n.pos.z, kind: 'npc', color: n.blip, label: `${n.name} · ${n.role}` });
+    for (const c of police.vehicles()) out.push({ x: c.pos.x, z: c.pos.z, kind: 'police', label: 'Policía Municipal' });
+    if (lastCar && lastCar !== player.vehicle) out.push({ x: lastCar.pos.x, z: lastCar.pos.z, kind: 'car', label: `Tu coche · ${lastCar.type.name}` });
+    out.push(...missions.icons(), ...shops.icons());
+    if (nav.waypoint && !missions.currentTarget) out.push({ x: nav.waypoint.x, z: nav.waypoint.z, kind: 'waypoint', label: `Destino · ${placeName(nav.waypoint.x, nav.waypoint.z)}` });
+    return out;
+  };
+  const routeText = () => {
+    const r = nav.route;
+    if (!r) return null;
+    const to = missions.currentTarget ? 'Objetivo de la misión' : nav.waypoint ? placeName(nav.waypoint.x, nav.waypoint.z) : '';
+    return { short: `${fmtDist(r.length)} · ${fmtEta(r.eta)}`, long: `${to} · ${fmtDist(r.length)} · ${fmtEta(r.eta)} ${r.car ? 'en coche' : 'a pie'}` };
+  };
+  const toggleMap = (on: boolean) => {
+    if (on === mapOpen || !started || paused) return;
+    mapOpen = on;
+    const f = player.vehicle ? player.vehicle.pos : player.pos;
+    worldMap.show(on, inside ? inside.door.x : f.x, inside ? inside.door.z : f.z);
+    $('hud').style.visibility = on ? 'hidden' : '';
+    audio.setPaused(on);
+    if (on) document.exitPointerLock?.();
+    else { clock.getDelta(); input.lock(); }
+  };
   let music: Music | null = null;
   let soundMode = 0; // 0 todo, 1 sin música, 2 silencio
 
@@ -506,7 +567,7 @@ async function main() {
   };
   ($('o-image') as HTMLSelectElement).innerHTML = RETRO_PRESETS.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
   const openPause = () => {
-    if (!started || paused) return;
+    if (!started || paused || mapOpen) return;
     paused = true;
     audio.setPaused(true);
     // al pausar se guarda solo, si se puede
@@ -735,18 +796,25 @@ async function main() {
       input.endFrame();
       return;
     }
+    if (mapOpen) {
+      if (input.wasPressed('KeyM') || input.wasPressed('Escape') || input.padPressed(13) || input.padPressed(1)) { toggleMap(false); input.endFrame(); return; }
+      const f = player.vehicle ? player.vehicle.pos : player.pos;
+      if (input.wasPressed('KeyC')) worldMap.center(f.x, f.z);
+      worldMap.move(input.axis(['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']) + input.pad.lx, input.axis(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown']) + input.pad.ly,
+        input.axis(['KeyQ', 'Minus', 'NumpadSubtract'], ['KeyE', 'Equal', 'BracketRight', 'NumpadAdd']) + input.pad.rt - input.pad.lt, raw);
+      nav.update(0, f.x, f.z, player.vehicle ? player.vehicle.heading : player.heading, !!player.vehicle, missions.currentTarget);
+      const rt = routeText();
+      worldMap.draw(raw, { x: inside ? inside.door.x : f.x, z: inside ? inside.door.z : f.z, heading: player.vehicle ? player.vehicle.heading : player.heading },
+        mapIcons(0, 0, 1e9), nav.route && rt ? { pts: nav.route.pts, color: missions.currentTarget ? '#d4c29a' : '#8fb2e8', text: rt.long } : null);
+      input.endFrame();
+      return;
+    }
     if (started) {
       played += raw;
       autosaveT += raw;
       if (autosaveT > 120) { autosaveT = 0; if (!cantSave()) doSave(true); }
     }
-    if (input.wasPressed('KeyM')) {
-      soundMode = (soundMode + 1) % 3;
-      if (soundMode === 2) audio.toggleMute();
-      if (soundMode === 0) audio.toggleMute();
-      if (music) music.enabled = soundMode === 0 && settings.music;
-      hud.toast(['Música y sonido', 'Sin música', 'Silencio'][soundMode]);
-    }
+    if (input.wasPressed('KeyM') || (input.padPressed(13) && !shops.open)) toggleMap(true);
     if (input.wasPressed('KeyL')) lightsMode = lightsMode === 'auto' ? 'on' : lightsMode === 'on' ? 'off' : 'auto';
     if (player.vehicle && (input.wasPressed('KeyR') || input.padPressed(8))) player.vehicle.reset(ground);
     if (input.wasPressed('KeyH')) hud.toggleHelp();
@@ -913,13 +981,20 @@ async function main() {
     const tags = routines.npcs.filter((n) => n.visible && n.alive && n.pos.distanceTo(player.pos) < 14)
       .map((n) => ({ key: n.name, text: `${n.name} <i>· ${n.role}</i>`, x: n.pos.x, y: n.pos.y, z: n.pos.z }));
     hud.placeOverlays(raw, project, tags);
-    const blips = lastCar && lastCar !== v ? [{ x: lastCar.pos.x, z: lastCar.pos.z, color: '#d4c29a', size: 4 }] : [];
-    for (const n of routines.npcs) if (n.visible && n.alive) blips.push({ x: n.pos.x, z: n.pos.z, color: n.blip, size: 2.5 });
-    for (const c of police.vehicles()) blips.push({ x: c.pos.x, z: c.pos.z, color: Math.floor(performance.now() / 250) % 2 ? '#2a6bff' : '#e9e6df', size: 3.5 });
-    if (!inside) blips.push(...missions.blips(), ...shops.blips());
-    for (const d of shopDoors.values()) if (Math.abs(d.x - wfocus.x) + Math.abs(d.z - wfocus.z) < 160) blips.push({ x: d.x, z: d.z, color: d.kind === 'bar' ? '#b75b32' : '#5f8fd8', size: 1.8 });
-    hud.drawMinimap(wfocus.x, wfocus.z, rig.yaw, v ? v.heading : player.heading, blips);
-    hud.drawCompass(rig.yaw, focus.x, focus.z, [...(lastCar && lastCar !== v ? [{ x: lastCar.pos.x, z: lastCar.pos.z, color: '#9a8f78' }] : []), ...(inside ? [] : missions.compass())]);
+    // GPS: ruta al objetivo de la misión o al destino marcado
+    if (started && !inside) {
+      nav.update(raw, wfocus.x, wfocus.z, v ? v.heading : player.heading, !!v, missions.currentTarget);
+      if (nav.arrived) hud.toast('Has llegado a tu destino');
+    }
+    const rt = routeText();
+    const viewM = v ? THREE.MathUtils.clamp(300 + v.speed * 9, 300, 650) : 230;
+    hud.drawMinimap(wfocus.x, wfocus.z, rig.yaw, v ? v.heading : player.heading, inside ? [] : mapIcons(wfocus.x, wfocus.z, 110),
+      nav.route && !inside ? { pts: nav.route.pts, color: missions.currentTarget ? '#d4c29a' : '#8fb2e8' } : null, viewM, rt && !inside ? rt.short : null, raw);
+    hud.drawCompass(rig.yaw, focus.x, focus.z, [
+      ...(lastCar && lastCar !== v ? [{ x: lastCar.pos.x, z: lastCar.pos.z, color: '#9a8f78' }] : []),
+      ...(inside ? [] : missions.compass()),
+      ...(nav.waypoint && !missions.currentTarget && !inside ? [{ x: nav.waypoint.x, z: nav.waypoint.z, color: '#8fb2e8' }] : []),
+    ]);
 
     retro.render(scene, camera, raw, sky.night);
     input.endFrame();
@@ -928,7 +1003,7 @@ async function main() {
 
   // Depuración en consola
   (window as unknown as { __madriz: unknown }).__madriz = {
-    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
+    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
     pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */

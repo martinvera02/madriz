@@ -8,6 +8,7 @@ import type { Ground } from '../world/roads';
 import type { Hud } from '../ui/hud';
 import type { Police } from './police';
 import type { Target } from './combat';
+import type { MapIcon } from '../ui/mapIcons';
 
 /**
  * Misiones: marcadores de inicio repartidos por la ciudad, un encargo activo cada vez,
@@ -435,6 +436,20 @@ export class Missions {
     for (const s of this.starts.values()) { const d = s.pos.distanceTo(me); if (d < bd) { bd = d; best = s.pos; } }
     return best ? [{ x: best.x, z: best.z, color: '#b75b32' }] : [];
   }
+
+  /** Iconos para el minimapa y el mapa completo. */
+  icons(): MapIcon[] {
+    const out: MapIcon[] = [];
+    for (const [id, s] of this.starts) {
+      const def = MISSIONS.find((m) => m.id === id)!;
+      out.push({ x: s.pos.x, z: s.pos.z, kind: 'mission', label: `${def.giver}: «${def.title}»` });
+    }
+    const t = this.active?.run.target;
+    if (t) out.push({ x: t.x, z: t.z, kind: 'target', label: this.active!.run.objective });
+    return out;
+  }
+  /** Objetivo actual de la misión (el GPS lo prefiere al destino marcado). */
+  get currentTarget(): THREE.Vector3 | null { return this.active?.run.target ?? null; }
 
   targets(): Target[] { return this.active ? this.active.run.targets() : []; }
   owns(v: Vehicle) { return !!this.active && this.active.run.owns(v); }
