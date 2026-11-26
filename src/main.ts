@@ -31,6 +31,8 @@ import { Music } from './systems/music';
 import { buildInterior, updateInterior, INTERIOR_Y, type Interior } from './world/interiors';
 import { Police } from './systems/police';
 import { Pickups } from './systems/pickups';
+import { Missions, type MissionCtx } from './systems/missions';
+import { Shops } from './systems/shops';
 import { loadGame, saveGame, deleteGame, loadSettings, saveSettings, describeSaveTime, describePlayed, type SaveData } from './systems/save';
 import { RETRO_PRESETS } from './render/retroPost';
 import { shopDoors, type ShopDoor } from './world/shopfronts';
@@ -256,7 +258,7 @@ async function main() {
   };
 
   const combat: Combat = new Combat(collision, ground, {
-    targets: (): Target[] => [...peds.targets(), ...routines.targets(), ...interiorTargets(), ...police.targets()],
+    targets: (): Target[] => [...peds.targets(), ...routines.targets(), ...interiorTargets(), ...police.targets(), ...(inside ? [] : missions.targets())],
     vehicles: (): Vehicle[] => (inside ? [] : [...parked, ...traffic.cars, ...police.vehicles()].filter((c) => c !== player.vehicle)),
     smoke: (x, y, z, d, sz) => fx.smoke(x, y, z, d, sz),
     sound: (k, w, pos) => audio.weapon(k, w, pos),
@@ -304,6 +306,51 @@ async function main() {
   scene.add(pickups.group);
   let money = 40;
   const pay = (eur: number) => { if (money < eur) return false; money = Math.round((money - eur) * 100) / 100; return true; };
+  // ---------- Misiones y tiendas ----------
+  const missionCtx: MissionCtx = {
+    scene, world: collision, ground, player, police, hud,
+    addMoney: (eur) => { money = Math.round((money + eur) * 100) / 100; },
+    snapCar: (x, z) => {
+      const n = carGraph.nearestEdge(x, z, (e) => e.road.w >= 5 && e.len > 6);
+      if (!n) return new THREE.Vector3(x, ground.heightAt(x, z), z);
+      const p = carGraph.pointOn(n.e, n.t * n.e.len, 0, { x: 0, z: 0 });
+      return new THREE.Vector3(p.x, ground.heightAt(p.x, p.z), p.z);
+    },
+    snapWalk: (x, z) => {
+      const n = walkGraph.nearestEdge(x, z);
+      if (!n) return new THREE.Vector3(x, ground.heightAt(x, z), z);
+      const p = walkGraph.pointOn(n.e, n.t * n.e.len, n.e.road.car ? walkGraph.laneOffset(n.e) : 0, { x: 0, z: 0 });
+      return new THREE.Vector3(p.x, ground.heightAt(p.x, p.z), p.z);
+    },
+    parkCar: (type, color, x, z) => {
+      const v = new Vehicle(VEHICLE_TYPES[type], color);
+      const n = carGraph.nearestEdge(x, z, (e) => e.road.w >= 6 && e.len > 10);
+      if (n) {
+        const off = n.e.road.w / 2 - v.type.width / 2 - 0.3;
+        const p = carGraph.pointOn(n.e, THREE.MathUtils.clamp(n.t * n.e.len, 5, n.e.len - 5), off, { x: 0, z: 0 });
+        v.place(p.x, p.z, Math.atan2(n.e.dx, n.e.dz), ground.heightAt(p.x, p.z));
+      } else v.place(x, z, 0, ground.heightAt(x, z));
+      // quitar cualquier aparcado que esté justo ahí
+      for (let k = parked.length - 1; k >= 0; k--) {
+        const o = parked[k];
+        if (o !== player.vehicle && o !== lastCar && o.pos.distanceTo(v.pos) < 6) { scene.remove(o.mesh); o.dispose(); parked.splice(k, 1); }
+      }
+      scene.add(v.mesh);
+      parked.push(v);
+      return v;
+    },
+    removeCar: (v) => {
+      const i = parked.indexOf(v);
+      if (i >= 0) parked.splice(i, 1);
+      if (lastCar === v) lastCar = null;
+      scene.remove(v.mesh);
+      v.dispose();
+    },
+    exitVehicle: () => { if (player.vehicle) player.exit(collision, ground); },
+    alarm: (pos, r) => peds.alarm(pos, r),
+  };
+  const missions = new Missions(missionCtx);
+  const shops = new Shops(missionCtx, combat, { get: () => money, pay: (eur) => pay(eur) });
   let music: Music | null = null;
   let soundMode = 0; // 0 todo, 1 sin música, 2 silencio
 
@@ -371,6 +418,7 @@ async function main() {
     if (deadT > 0) return 'No se puede guardar estando KO';
     if (police.stars > 0) return 'No se puede guardar con la policía detrás';
     if (transition > 0) return 'Espera un momento';
+    if (missions.busy) return 'Termina antes la misión';
     return null;
   };
   const gather = (): SaveData => {
@@ -381,7 +429,7 @@ async function main() {
     return {
       v: 1, at: Date.now(), pos: [p.x, p.y, p.z], heading: player.vehicle ? player.vehicle.heading : player.heading,
       health: player.health, money, weapon: combat.weapon, ammo: [...combat.ammo], reserve: [...combat.reserve],
-      time: sky.time, raining: sky.raining, played, progress: {},
+      time: sky.time, raining: sky.raining, played, progress: { missions: missions.serialize() }, owned: [...combat.owned],
     };
   };
   const doSave = (auto: boolean): string => {
@@ -402,7 +450,10 @@ async function main() {
     money = d.money;
     d.ammo.forEach((n, i) => { if (i < combat.ammo.length) combat.ammo[i] = n; });
     d.reserve.forEach((n, i) => { if (i < combat.reserve.length) combat.reserve[i] = n; });
+    // partidas de antes de la armería: se conservan todas las armas
+    (d.owned ?? WEAPONS.map(() => true)).forEach((o, i) => { if (i < combat.owned.length) combat.owned[i] = o; });
     combat.select(Math.min(d.weapon, WEAPONS.length - 1));
+    missions.restore((d.progress as { missions?: unknown })?.missions);
     sky.time = d.time;
     if (sky.raining !== d.raining) sky.toggleRain();
     played = d.played;
@@ -566,7 +617,9 @@ async function main() {
   };
   type EAction = { text: string; run: () => void } | null;
   const eAction = (): EAction => {
-    if (player.vehicle || deadT > 0) return null;
+    if (deadT > 0 || shops.open) return null;
+    if (!inside) { const a = missions.action() ?? shops.action(); if (a) return a; }
+    if (player.vehicle) return null;
     const armed = !WEAPONS[combat.weapon].melee;
     if (inside) {
       const room = inside;
@@ -619,7 +672,7 @@ async function main() {
         handbrake: input.isDown('Space') || input.padDown(0) || input.padDown(5),
       }, collision, ground);
       player.pos.copy(v.pos);
-    } else if (deadT <= 0) {
+    } else if (deadT <= 0 && !shops.open) {
       player.aiming = aiming;
       player.updateOnFoot(dt, input, rig.yaw, collision, ground);
       // atropellos al jugador
@@ -650,13 +703,14 @@ async function main() {
       else { combat.reserve[2] += p.amount; hud.toast(`+${p.amount} balas de pistola`); }
     }
     combat.update(dt);
+    if (started) missions.update(dt, deadT > 0);
     if (player.vehicle && player.vehicle.lastImpact > 5) rig.addShake(Math.min(1, player.vehicle.lastImpact / 20));
   };
 
   const manageParked = (focus: THREE.Vector3) => {
     for (let k = parked.length - 1; k >= 0; k--) {
       const v = parked[k];
-      if (v === player.vehicle || v === lastCar) continue;
+      if (v === player.vehicle || v === lastCar || missions.owns(v)) continue;
       if (v.pos.distanceTo(focus) > 450) { scene.remove(v.mesh); v.dispose(); parked.splice(k, 1); }
     }
     if (parked.length < 26) traffic.spawnParked(focus, 4, parked);
@@ -750,6 +804,12 @@ async function main() {
       }
     } else if (lastHurt > 8 && player.health < 100) player.health = Math.min(100, player.health + raw * 2);
     lastHurt += raw;
+    shops.update(raw, {
+      up: input.wasPressed('KeyW') || input.wasPressed('ArrowUp') || input.padPressed(12),
+      down: input.wasPressed('KeyS') || input.wasPressed('ArrowDown') || input.padPressed(13),
+      buy: input.wasPressed('KeyE') || input.padPressed(0),
+      close: input.wasPressed('KeyQ') || input.padPressed(1),
+    });
     if (started && deadT <= 0) {
       const ea = eAction();
       if (ea && (input.wasPressed('KeyE') || input.padPressed(1) && !player.vehicle)) ea.run();
@@ -842,9 +902,9 @@ async function main() {
       else hud.setZone(placeName(focus.x, focus.z), `Madrid · ${Math.round(terrain.altitude(focus.x, focus.z))} m`);
     }
     hud.update(raw, sky.clock() + (timeBoost > 1 ? ` x${timeBoost}` : ''), v ? v.speed * 3.6 : null);
-    if (!v && started && deadT <= 0) {
+    if (started && deadT <= 0) {
       const ea = eAction();
-      const near = inside ? null : nearestEnterable();
+      const near = inside || v ? null : nearestEnterable();
       if (ea) hud.setHint('E', ea.text);
       else if (near) hud.setHint('F', near.driver === 'ai' ? `Robar ${near.type.name.toLowerCase()}` : `Subir al ${near.type.name.toLowerCase()}`);
       else hud.setHint(null);
@@ -856,9 +916,10 @@ async function main() {
     const blips = lastCar && lastCar !== v ? [{ x: lastCar.pos.x, z: lastCar.pos.z, color: '#d4c29a', size: 4 }] : [];
     for (const n of routines.npcs) if (n.visible && n.alive) blips.push({ x: n.pos.x, z: n.pos.z, color: n.blip, size: 2.5 });
     for (const c of police.vehicles()) blips.push({ x: c.pos.x, z: c.pos.z, color: Math.floor(performance.now() / 250) % 2 ? '#2a6bff' : '#e9e6df', size: 3.5 });
+    if (!inside) blips.push(...missions.blips(), ...shops.blips());
     for (const d of shopDoors.values()) if (Math.abs(d.x - wfocus.x) + Math.abs(d.z - wfocus.z) < 160) blips.push({ x: d.x, z: d.z, color: d.kind === 'bar' ? '#b75b32' : '#5f8fd8', size: 1.8 });
     hud.drawMinimap(wfocus.x, wfocus.z, rig.yaw, v ? v.heading : player.heading, blips);
-    hud.drawCompass(rig.yaw, focus.x, focus.z, lastCar && lastCar !== v ? [{ x: lastCar.pos.x, z: lastCar.pos.z, color: '#d4c29a' }] : []);
+    hud.drawCompass(rig.yaw, focus.x, focus.z, [...(lastCar && lastCar !== v ? [{ x: lastCar.pos.x, z: lastCar.pos.z, color: '#9a8f78' }] : []), ...(inside ? [] : missions.compass())]);
 
     retro.render(scene, camera, raw, sky.night);
     input.endFrame();
@@ -867,7 +928,7 @@ async function main() {
 
   // Depuración en consola
   (window as unknown as { __madriz: unknown }).__madriz = {
-    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
+    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
     pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */

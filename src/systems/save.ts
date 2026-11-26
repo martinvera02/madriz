@@ -22,6 +22,8 @@ export interface SaveData {
   played: number;
   /** Progreso de misiones y otros sistemas futuros (clave → estado). */
   progress: Record<string, unknown>;
+  /** Armas compradas (las partidas antiguas no lo tienen: se dan todas). */
+  owned?: boolean[];
 }
 
 export interface Settings {

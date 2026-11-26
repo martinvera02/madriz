@@ -29,7 +29,7 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 | L | Luces: automáticas → encendidas → apagadas |
 | R | Enderezar el coche |
 | V | Primera / tercera persona (a pie y al volante) |
-| E | Hablar con la gente · entrar y salir de bares y tiendas · pedir en el mostrador (cuesta dinero) · echar una moneda a Lucía |
+| E | Empezar misión (marcador naranja) · armería · taller · hablar con la gente · entrar y salir de bares y tiendas · pedir en el mostrador (cuesta dinero) · echar una moneda a Lucía |
 | 1–5 / rueda | Puños, bate, pistola, subfusil, escopeta |
 | Clic derecho | Apuntar (cámara al hombro) / guardia con los puños |
 | Clic izquierdo | Disparar / golpear |
@@ -44,6 +44,23 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar, stick derecho cámara,
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
+
+## Versión 0.10: misiones, armería y taller
+
+- **Sistema de misiones** (`src/systems/missions.ts`): marcadores naranjas en el mapa, el minimapa y la brújula;
+  se empiezan con E. Rótulo de inicio, diálogo de quien te da el encargo, objetivo abajo, contrarreloj,
+  marcador de destino y rótulos de misión superada / fallida. Si fallas (o caes), el marcador vuelve a aparecer.
+  El progreso se guarda con la partida; no se puede guardar a mitad de misión.
+  1. **El primer recado** (Paco, Puerta del Sol): consigue un coche, recoge un paquete en el Mercado de San Miguel
+     y entrégalo en la plaza de Lavapiés en menos de 2:40. 150 €.
+  2. **Cobro pendiente** (Paco, Tirso de Molina): el Rata está en Cascorro, huye corriendo; hay que darle un
+     escarmiento sin matarlo y cobrar. 300 €.
+  3. **Coche caliente** (Lola, plaza de Lavapiés): roba un deportivo rojo en la plaza de España (salta la alarma:
+     1 estrella), pierde a la policía y llévalo al taller de Embajadores. Hasta 500 € según cómo llegue el coche.
+- **Armería Montera** (marcador azul, calle de la Montera): bate, subfusil, escopeta, munición y botiquín.
+  Menú con W/S, E compra, Q sale. Una partida nueva empieza solo con puños y pistola.
+- **Taller de Embajadores** (marcador verde): entra con el coche y pulsa E: reparación y matrícula nueva por 120 €,
+  y la policía deja de buscarte.
 
 ## Versión 0.9: partida guardada y pausa
 

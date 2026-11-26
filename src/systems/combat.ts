@@ -51,7 +51,9 @@ export class Combat {
   readonly group = new THREE.Group();
   weapon = 0;
   readonly ammo: number[] = WEAPONS.map((w) => w.mag ?? 0);
-  readonly reserve: number[] = WEAPONS.map((w) => w.reserve ?? 0);
+  /** Partida nueva: puños y pistola con algo de munición; el resto se compra en la armería. */
+  readonly owned: boolean[] = WEAPONS.map((w) => w.id === 'punos' || w.id === 'pistola');
+  readonly reserve: number[] = WEAPONS.map((w) => (w.id === 'pistola' ? 24 : 0));
   private cooldown = 0;
   reloading = 0;
   private comboL = false;
@@ -70,13 +72,27 @@ export class Combat {
   get def() { return WEAPONS[this.weapon]; }
 
   select(i: number) {
-    if (i < 0 || i >= WEAPONS.length || i === this.weapon) return false;
+    if (i < 0 || i >= WEAPONS.length || i === this.weapon || !this.owned[i]) return false;
     this.weapon = i;
     this.reloading = 0;
     this.cooldown = 0.25;
     return true;
   }
-  cycle(d: number) { return this.select((this.weapon + d + WEAPONS.length) % WEAPONS.length); }
+  cycle(d: number) {
+    for (let k = 1; k < WEAPONS.length; k++) {
+      const i = (this.weapon + d * k + WEAPONS.length * k) % WEAPONS.length;
+      if (this.owned[i]) return this.select(i);
+    }
+    return false;
+  }
+  /** Arma nueva: cargador lleno y dos de repuesto. */
+  give(i: number) {
+    if (this.owned[i]) return;
+    this.owned[i] = true;
+    const w = WEAPONS[i];
+    this.ammo[i] = w.mag ?? 0;
+    this.reserve[i] = (w.mag ?? 0) * 2;
+  }
 
   reload() {
     const w = this.def;
