@@ -256,3 +256,6 @@ kbd {
   border-left: 2px solid var(--warm); pointer-events: none; white-space: nowrap; display: none;
 }
 #worldmap-help { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); font-size: 13px; color: var(--cement); pointer-events: none; white-space: nowrap; }
+
+#fps { position: absolute; right: 12px; bottom: 22px; font: 600 11px var(--mono); color: var(--cement); background: rgba(23, 26, 32, .6); padding: 2px 6px; }
+#fps.hidden { display: none; }

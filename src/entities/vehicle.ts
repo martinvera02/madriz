@@ -88,6 +88,15 @@ export class Vehicle {
   driver: 'none' | 'ai' | 'player' = 'none';
   /** Ocultar al conductor (cámara en primera persona dentro del coche). */
   hideDriver = false;
+  /** Lejos de la cámara: sin conductor visible ni sombras de las ruedas (menos llamadas de dibujo). */
+  far = false;
+  setFar(on: boolean) {
+    if (on === this.far) return;
+    this.far = on;
+    for (const w of this.wheels) for (const c of w.spin.children) (c as THREE.Mesh).castShadow = !on;
+    if (on) this.driverMesh.visible = false;
+    else this.driverMesh.visible = this.driver !== 'none' && !this.hideDriver && !this.burnt;
+  }
   /** Último golpe fuerte (m/s) para efectos. */
   lastImpact = 0;
   readonly color: number;
@@ -491,7 +500,7 @@ export class Vehicle {
     const on = (Math.floor(performance.now() / 380) % 2) === 0 ? 1 : 0;
     u.uBlinkL.value = this.blink > 0 || this.health < 15 ? on : 0;
     u.uBlinkR.value = this.blink < 0 || this.health < 15 ? on : 0;
-    this.driverMesh.visible = this.driver !== 'none' && !this.hideDriver && !this.burnt;
+    this.driverMesh.visible = this.driver !== 'none' && !this.hideDriver && !this.burnt && !this.far;
     // vista desde el asiento: pilares delanteros y marco del techo (la chapa del habitáculo no se ve desde dentro)
     if (this.pillars) this.pillars.visible = this.hideDriver;
     void dt;

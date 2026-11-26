@@ -35,6 +35,7 @@ import { Missions, type MissionCtx } from './systems/missions';
 import { Shops } from './systems/shops';
 import { Navigation, fmtDist, fmtEta } from './systems/navigation';
 import { WorldMap } from './ui/worldMap';
+import { DrawDistance, splitGroup, splitInstancedGroup } from './render/streaming';
 import type { MapIcon } from './ui/mapIcons';
 import { loadGame, saveGame, deleteGame, loadSettings, saveSettings, describeSaveTime, describePlayed, type SaveData } from './systems/save';
 import { RETRO_PRESETS } from './render/retroPost';
@@ -87,11 +88,14 @@ async function main() {
   say(`Levantando ${data.buildings.length.toLocaleString('es-ES')} edificios…`); await frameYield();
   const { group: bGroup, placed, specials, facades, roofSpots } = buildBuildings(data, terrain, collision, makeFacadeOverride(data), groundRes.minimap);
   scene.add(bGroup);
-  scene.add(buildRoofProps(roofSpots));
+  const roofProps = buildRoofProps(roofSpots);
+  scene.add(roofProps);
   const facadeDetail = new FacadeDetail(facades);
   scene.add(facadeDetail.group);
-  scene.add(buildIconic(data, placed, ground, collision));
-  scene.add(buildFacadeDetails(data, placed));
+  const iconic = buildIconic(data, placed, ground, collision);
+  scene.add(iconic);
+  const bigDetails = buildFacadeDetails(data, placed);
+  scene.add(bigDetails);
 
   say('Plantando árboles y farolas…'); await frameYield();
   const props = buildProps(data, ground, collision);
@@ -99,7 +103,8 @@ async function main() {
   const wind = (props.group.userData as { wind: { value: number } }).wind;
   say('Colocando bancos, quioscos y marquesinas…'); await frameYield();
   const carway = new CarwayIndex(data);
-  scene.add(buildStreetFurniture(data, specials, ground, collision, carway));
+  const furniture = buildStreetFurniture(data, specials, ground, collision, carway);
+  scene.add(furniture);
   const sky = new Sky(scene, props.streetLightMat, props.lightPoolMat);
   if (params.has('lluvia')) sky.raining = true;
   // Texturas de resolución contenida: ampliación sin suavizar (píxel visible de cerca)
@@ -140,6 +145,26 @@ async function main() {
   const peds = new Pedestrians(walkGraph, scene, collision, ground);
   const lights = new TrafficLights(data, carGraph, ground, collision, carway);
   scene.add(lights.group);
+
+  // ---------- Rendimiento: trocear la ciudad en celdas y dibujar por distancia ----------
+  say('Optimizando la ciudad…'); await frameYield();
+  const CELL = Number(params.get('celda') ?? 260);
+  for (const g of [groundRes.group, roads.group, bGroup, bigDetails, furniture]) splitGroup(g, CELL);
+  splitInstancedGroup(roofProps, CELL);
+  // los cachivaches de las azoteas no aportan sombra visible y multiplicaban las llamadas de la sombra
+  roofProps.traverse((o) => { o.castShadow = false; });
+  const drawDist = new DrawDistance();
+  let lodT = 0;
+  // contar las dos pasadas (escena + sombra) y el posproceso de cada imagen juntos
+  renderer.info.autoReset = false;
+  let fpsN = 0, fpsT = 0, fpsLast = 0;
+  const fpsEl = document.getElementById('fps')!;
+  for (const g of [groundRes.group, roads.group, bGroup, bigDetails]) drawDist.add(g, 'city');
+  drawDist.add(iconic, 'landmark');
+  drawDist.add(furniture, 'detail');
+  drawDist.add(props.group, 'props');
+  drawDist.add(lights.group, 'props');
+  drawDist.add(roofProps, 'roof');
   traffic.lights = lights;
   peds.lights = lights;
   peds.carway = carway;
@@ -455,6 +480,10 @@ async function main() {
     rig.sens = settings.sens;
     rig.invertY = settings.invertY;
     if (retro.preset !== settings.image) retro.setPreset(settings.image);
+    drawDist.scale = [0.6, 1, 1.6][settings.draw] ?? 1;
+    sky.sun.castShadow = settings.shadows;
+    document.getElementById('fps')!.classList.toggle('hidden', !settings.fps);
+    drawDist.update(0, camera.position, (scene.fog as THREE.Fog).far, true);
     if (music) music.enabled = settings.music && soundMode === 0;
     saveSettings(settings);
   };
@@ -564,6 +593,9 @@ async function main() {
     ($('o-invert') as HTMLInputElement).checked = settings.invertY;
     ($('o-music') as HTMLInputElement).checked = settings.music;
     ($('o-image') as HTMLSelectElement).value = String(retro.preset);
+    ($('o-draw') as HTMLSelectElement).value = String(settings.draw);
+    ($('o-shadows') as HTMLInputElement).checked = settings.shadows;
+    ($('o-fps') as HTMLInputElement).checked = settings.fps;
   };
   ($('o-image') as HTMLSelectElement).innerHTML = RETRO_PRESETS.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
   const openPause = () => {
@@ -598,6 +630,9 @@ async function main() {
   $('o-sens').addEventListener('input', (e) => { settings.sens = +(e.target as HTMLInputElement).value / 100; $('o-sens-v').textContent = settings.sens.toFixed(1); applySettings(); });
   $('o-invert').addEventListener('change', (e) => { settings.invertY = (e.target as HTMLInputElement).checked; applySettings(); });
   $('o-music').addEventListener('change', (e) => { settings.music = (e.target as HTMLInputElement).checked; applySettings(); });
+  $('o-draw').addEventListener('change', (e) => { settings.draw = +(e.target as HTMLSelectElement).value; applySettings(); });
+  $('o-fps').addEventListener('change', (e) => { settings.fps = (e.target as HTMLInputElement).checked; applySettings(); });
+  $('o-shadows').addEventListener('change', (e) => { settings.shadows = (e.target as HTMLInputElement).checked; applySettings(); });
   $('o-image').addEventListener('change', (e) => { settings.image = +(e.target as HTMLSelectElement).value; applySettings(); });
   window.addEventListener('beforeunload', () => { if (started && !cantSave()) saveGame(gather()); });
 
@@ -788,6 +823,7 @@ async function main() {
   const frame = () => {
     requestAnimationFrame(frame);
     const raw = Math.min(clock.getDelta(), 0.05);
+    renderer.info.reset();
     input.poll();
     // Start del mando: pausa / continuar
     if (started && input.padPressed(9)) { if (paused) resume(); else openPause(); }
@@ -996,6 +1032,21 @@ async function main() {
       ...(nav.waypoint && !missions.currentTarget && !inside ? [{ x: nav.waypoint.x, z: nav.waypoint.z, color: '#8fb2e8' }] : []),
     ]);
 
+    drawDist.update(raw, camera.position, (scene.fog as THREE.Fog).far);
+    if (settings.fps) {
+      fpsN++; fpsT += clock.elapsedTime - fpsLast; fpsLast = clock.elapsedTime;
+      if (fpsT > 0.5) {
+        const ri = renderer.info.render;
+        fpsEl.textContent = `${Math.round(fpsN / fpsT)} FPS · ${ri.calls} llamadas · ${Math.round(ri.triangles / 1000)}k triángulos`;
+        fpsN = 0; fpsT = 0;
+      }
+    }
+    lodT -= raw;
+    if (lodT <= 0) {
+      lodT = 0.25;
+      const cp = camera.position;
+      for (const c of [...parked, ...traffic.cars, ...police.vehicles()]) c.setFar(c !== player.vehicle && Math.hypot(c.pos.x - cp.x, c.pos.z - cp.z) > 70);
+    }
     retro.render(scene, camera, raw, sky.night);
     input.endFrame();
   };
@@ -1003,7 +1054,7 @@ async function main() {
 
   // Depuración en consola
   (window as unknown as { __madriz: unknown }).__madriz = {
-    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
+    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
     pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */

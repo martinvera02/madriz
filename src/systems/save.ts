@@ -35,12 +35,17 @@ export interface Settings {
   /** Multiplicador de la sensibilidad del ratón (0,4–2,5). */
   sens: number;
   invertY: boolean;
+  /** Distancia de dibujado: 0 corta · 1 media · 2 larga. */
+  draw: number;
+  shadows: boolean;
+  /** Contador de imágenes por segundo y llamadas de dibujo. */
+  fps: boolean;
 }
 
 const SAVE_KEY = 'madriz.save.v1';
 const SETTINGS_KEY = 'madriz.settings.v1';
 
-export const DEFAULT_SETTINGS: Settings = { volume: 0.85, music: true, image: 0, sens: 1, invertY: false };
+export const DEFAULT_SETTINGS: Settings = { volume: 0.85, music: true, image: 0, sens: 1, invertY: false, draw: 1, shadows: true, fps: false };
 
 function read<T>(key: string): T | null {
   try {

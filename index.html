@@ -30,6 +30,7 @@
       <div id="fade"></div>
       <div id="dead"><b>HAS CAÍDO</b><small>Te despiertas en el hospital…</small></div>
       <div id="hint"></div>
+      <div id="fps" class="hidden"></div>
       <div id="objective"></div>
       <div id="mission-timer"></div>
       <div id="mission-banner"></div>
@@ -51,7 +52,7 @@
     </div>
     <div id="start">
       <div class="start-inner">
-        <div class="kicker">MADRID · ESCALA 1:1 · PROTOTIPO 0.11</div>
+        <div class="kicker">MADRID · ESCALA 1:1 · PROTOTIPO 0.12</div>
         <h1>MADRIZ</h1>
         <div class="tagline">La ciudad no duerme. Tú tampoco.</div>
         <div class="start-buttons">
@@ -89,6 +90,9 @@
           <label class="check"><input id="o-invert" type="checkbox" /> Invertir eje vertical</label>
           <label class="check"><input id="o-music" type="checkbox" /> Música</label>
           <label>Imagen <select id="o-image"></select></label>
+          <label>Distancia de dibujado <select id="o-draw"><option value="0">Corta (portátiles)</option><option value="1">Media</option><option value="2">Larga</option></select></label>
+          <label class="check"><input id="o-shadows" type="checkbox" /> Sombras del sol</label>
+          <label class="check"><input id="o-fps" type="checkbox" /> Mostrar FPS</label>
         </div>
         <p class="pause-foot">Se guarda solo cada 2 minutos si no te busca la policía · <kbd>Esc</kbd> pausa · Start en el mando</p>
       </div>

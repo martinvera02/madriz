@@ -45,6 +45,30 @@ Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
 
+## Versión 0.12: rendimiento
+
+Medido en el mismo punto (Puerta del Sol, mediodía), por imagen, contando la pasada de la escena y la de la sombra:
+
+| | Antes | Ahora |
+|---|---|---|
+| Triángulos dibujados | ~10 M | ~2,3 M |
+| Llamadas de dibujo | ~1.000 | ~1.000 |
+
+Las llamadas no bajan porque las celdas añaden trozos al tiempo que se descartan los que no se ven; lo que queda
+son sobre todo peatones y coches (cada uno con varias piezas y su sombra). Reducirlas más pide instanciar
+personajes y coches, que queda pendiente.
+
+- **La ciudad troceada en celdas de 260 m** (`src/render/streaming.ts`): suelo, calles, edificios, detalles de
+  fachada y mobiliario eran unas pocas mallas gigantes que se dibujaban enteras aunque solo vieras una calle, y
+  la sombra del sol las volvía a dibujar. Ahora la cámara y la sombra descartan las celdas que no ven.
+  Los cachivaches de las azoteas (890 000 triángulos en 5 mallas instanciadas que cubrían todo el mapa) también.
+- **Distancia de dibujado por categoría**: árboles y farolas a ~330 m, mobiliario a ~420 m, edificios hasta la
+  niebla y monumentos siempre. Se ajusta a la niebla de cada momento (lluvia, noche).
+- **Coches lejanos** (más de 70 m) sin conductor visible ni sombras de las ruedas.
+- **Opciones nuevas en la pausa**: distancia de dibujado (corta para portátiles · media · larga), sombras del sol
+  y contador de FPS con llamadas y triángulos.
+- `?celda=N` en la URL cambia el tamaño de celda para hacer pruebas.
+
 ## Versión 0.11: minimapa inteligente, mapa completo y GPS
 
 - **GPS** (`src/systems/navigation.ts`): A* sobre la red viaria real con montículo binario. En coche busca la
