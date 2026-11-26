@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# teselas del MDT05 descargadas por tools/fetch-data.mjs (se regeneran)
+tools/cache/
+*.log
+.DS_Store

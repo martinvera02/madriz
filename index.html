@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MADRIZ — prototipo</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud">
+      <canvas id="compass" width="520" height="40"></canvas>
+      <div id="toast"></div>
+      <div id="clock-box"><span id="clock"></span><small id="weather"></small></div>
+      <div id="wanted"></div>
+      <div id="money">0,00 €</div>
+      <div id="zone-banner"></div>
+      <canvas id="minimap" width="200" height="200"></canvas>
+      <div id="speedo">
+        <canvas id="gauge" width="170" height="170"></canvas>
+        <div id="car-name"></div>
+        <div class="dmg"><div id="dmg-bar"></div></div>
+      </div>
+      <div id="crosshair"></div>
+      <div id="hitmark"></div>
+      <div id="weapon-box"><div id="weapon-name"></div><div id="weapon-ammo"></div></div>
+      <div id="health"><div id="health-bar"></div></div>
+      <div id="bubbles"></div>
+      <div id="fade"></div>
+      <div id="dead"><b>HAS CAÍDO</b><small>Te despiertas en el hospital…</small></div>
+      <div id="hint"></div>
+      <div id="attrib">© colaboradores de OpenStreetMap</div>
+      <div id="help">
+        <b>CONTROLES</b>
+        <div><kbd>WASD</kbd> moverse · conducir <span>(S frena y da marcha atrás)</span></div>
+        <div><kbd>Ratón</kbd> cámara <span>(clic para capturar)</span></div>
+        <div><kbd>Shift</kbd> correr · <kbd>Espacio</kbd> saltar / freno de mano</div>
+        <div><kbd>F</kbd> subir / bajar · robar coche</div>
+        <div><kbd>V</kbd> 1.ª / 3.ª persona · <kbd>C</kbd> mirar atrás</div>
+        <div><kbd>Q</kbd> claxon · <kbd>L</kbd> luces · <kbd>R</kbd> enderezar</div>
+        <div><kbd>E</kbd> hablar · entrar en bares y tiendas · pedir</div>
+        <div><kbd>1</kbd>–<kbd>5</kbd> / rueda armas · <kbd>Clic dcho.</kbd> apuntar · <kbd>Clic</kbd> disparar / golpear · <kbd>R</kbd> recargar</div>
+        <div><kbd>J</kbd> lluvia · <kbd>P</kbd> píxel · <kbd>N</kbd> reloj · <kbd>M</kbd> música / sonido</div>
+        <div><kbd>H</kbd> ocultar esta ayuda</div>
+      </div>
+    </div>
+    <div id="start">
+      <div class="start-inner">
+        <div class="kicker">MADRID · ESCALA 1:1 · PROTOTIPO 0.8</div>
+        <h1>MADRIZ</h1>
+        <div class="tagline">La ciudad no duerme. Tú tampoco.</div>
+        <button id="play" disabled>Cargando…</button>
+        <p id="loading">Preparando…</p>
+        <p class="small"><kbd>WASD</kbd> <kbd>Ratón</kbd> <kbd>F</kbd> coger coches <kbd>V</kbd> primera persona · mando compatible · con sonido</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
