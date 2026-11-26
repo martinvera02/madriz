@@ -39,9 +39,22 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 | M | Música y sonido → sin música → silencio |
 | N | Acelerar el reloj (x1 → x20 → x120) |
 | H | Mostrar / ocultar ayuda |
+| Esc | Pausa: continuar, guardar, cargar, nueva partida y opciones |
 
 Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar, stick derecho cámara,
-A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar.
+A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
+Start pausa, cruceta arriba primera / tercera persona.
+
+## Versión 0.9: partida guardada y pausa
+
+- **Guardar y cargar.** Se guarda en el navegador (localStorage): posición, vida, dinero, armas y munición, hora,
+  lluvia y tiempo jugado, más un hueco `progress` para las misiones. Guardado automático cada 2 minutos, al pausar
+  y al cerrar la pestaña. No se puede guardar con estrellas de búsqueda ni estando KO; dentro de un local se guarda
+  en la puerta.
+- **Pantalla de inicio** con «Continuar» (fecha, tiempo jugado y dinero de la partida) y «Nueva partida».
+- **Menú de pausa** (Esc o Start): continuar, guardar, cargar la última partida, nueva partida (pide confirmación)
+  y opciones que se recuerdan: volumen, sensibilidad del ratón, invertir eje vertical, música e imagen.
+  La pausa congela la simulación y el audio.
 
 ## Versión 0.8: policía, dinero, recargas y sonido real de armas
 

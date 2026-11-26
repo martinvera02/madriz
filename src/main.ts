@@ -31,6 +31,8 @@ import { Music } from './systems/music';
 import { buildInterior, updateInterior, INTERIOR_Y, type Interior } from './world/interiors';
 import { Police } from './systems/police';
 import { Pickups } from './systems/pickups';
+import { loadGame, saveGame, deleteGame, loadSettings, saveSettings, describeSaveTime, describePlayed, type SaveData } from './systems/save';
+import { RETRO_PRESETS } from './render/retroPost';
 import { shopDoors, type ShopDoor } from './world/shopfronts';
 
 const params = new URLSearchParams(location.search);
@@ -338,13 +340,154 @@ async function main() {
   const playBtn = document.getElementById('play') as HTMLButtonElement;
   playBtn.disabled = false;
   playBtn.textContent = 'Jugar';
-  playBtn.addEventListener('click', () => {
+  // ---------- Opciones, partida guardada y pausa ----------
+  const settings = loadSettings();
+  const applySettings = () => {
+    audio.setVolume(settings.volume);
+    rig.sens = settings.sens;
+    rig.invertY = settings.invertY;
+    if (retro.preset !== settings.image) retro.setPreset(settings.image);
+    if (music) music.enabled = settings.music && soundMode === 0;
+    saveSettings(settings);
+  };
+  applySettings();
+  let played = 0;
+  let paused = false;
+  let autosaveT = 0;
+  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+  /** Salir del local sin fundido (al cargar partida). */
+  const leaveInteriorNow = () => {
+    if (!inside) return;
+    inside.group.visible = false;
+    inside = null;
+    player.floorOverride = null;
+    roomLights.forEach((l) => { l.intensity = 0; });
+    audio.setIndoor(0);
+  };
+  /** Motivo por el que no se puede guardar ahora, o null si se puede. */
+  const cantSave = (): string | null => {
+    if (!started) return 'La partida no ha empezado';
+    if (deadT > 0) return 'No se puede guardar estando KO';
+    if (police.stars > 0) return 'No se puede guardar con la policía detrás';
+    if (transition > 0) return 'Espera un momento';
+    return null;
+  };
+  const gather = (): SaveData => {
+    // dentro de un local se guarda en la puerta, por fuera
+    let p = player.pos.clone();
+    if (inside) { const d = inside.door; p.set(d.x + d.nx * 0.8, d.y, d.z + d.nz * 0.8); }
+    else if (player.vehicle) p = player.vehicle.pos.clone();
+    return {
+      v: 1, at: Date.now(), pos: [p.x, p.y, p.z], heading: player.vehicle ? player.vehicle.heading : player.heading,
+      health: player.health, money, weapon: combat.weapon, ammo: [...combat.ammo], reserve: [...combat.reserve],
+      time: sky.time, raining: sky.raining, played, progress: {},
+    };
+  };
+  const doSave = (auto: boolean): string => {
+    const why = cantSave();
+    if (why) return why;
+    if (!saveGame(gather())) return 'No se ha podido guardar (el navegador no deja usar el almacenamiento)';
+    autosaveT = 0;
+    if (!auto) hud.toast('Partida guardada');
+    return 'Partida guardada';
+  };
+  const applySave = (d: SaveData) => {
+    leaveInteriorNow();
+    if (player.vehicle) player.exit(collision, ground);
+    const [x, , z] = d.pos;
+    player.pos.set(x, ground.heightAt(x, z, d.pos[1] + 1), z);
+    player.heading = d.heading; rig.yaw = d.heading; rig.pitch = 0.12;
+    player.health = THREE.MathUtils.clamp(d.health, 20, 100);
+    money = d.money;
+    d.ammo.forEach((n, i) => { if (i < combat.ammo.length) combat.ammo[i] = n; });
+    d.reserve.forEach((n, i) => { if (i < combat.reserve.length) combat.reserve[i] = n; });
+    combat.select(Math.min(d.weapon, WEAPONS.length - 1));
+    sky.time = d.time;
+    if (sky.raining !== d.raining) sky.toggleRain();
+    played = d.played;
+    police.clear();
+    deadT = 0;
+    hud.showDead(false);
+  };
+
+  const startGame = (save: SaveData | null) => {
     document.getElementById('start')!.classList.add('hidden');
+    if (save) applySave(save);
     started = true;
     input.lock();
     audio.start();
     if (!music && audio.context) { music = new Music(audio.context); music.start(); }
+    applySettings();
+  };
+  const startSave = loadGame();
+  if (startSave) {
+    playBtn.textContent = 'Continuar';
+    $('newgame').classList.remove('hidden');
+    const info = $('save-info');
+    info.textContent = `Partida guardada ${describeSaveTime(startSave.at)} · ${describePlayed(startSave.played)} jugados · ${startSave.money.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`;
+    info.classList.remove('hidden');
+  }
+  playBtn.addEventListener('click', () => startGame(startSave));
+  $('newgame').addEventListener('click', () => startGame(null));
+
+  // menú de pausa
+  const pauseEl = $('pause');
+  const pauseMsg = $('pause-msg');
+  let confirmNew = false;
+  const refreshPause = () => {
+    const sv = loadGame();
+    $('pause-stats').innerHTML =
+      `${describePlayed(played)} jugados · ${money.toLocaleString('es-ES', { minimumFractionDigits: 2 })} € · ${String(Math.floor(sky.time)).padStart(2, '0')}:${String(Math.floor((sky.time % 1) * 60)).padStart(2, '0')}<br>` +
+      (sv ? `Último guardado: ${describeSaveTime(sv.at)}` : 'Sin partida guardada');
+    ($('p-load') as HTMLButtonElement).disabled = !sv;
+    ($('p-save') as HTMLButtonElement).disabled = !!cantSave();
+    ($('p-save') as HTMLButtonElement).title = cantSave() ?? '';
+    $('p-new').textContent = 'Nueva partida';
+    confirmNew = false;
+    ($('o-volume') as HTMLInputElement).value = String(Math.round(settings.volume * 100));
+    $('o-volume-v').textContent = String(Math.round(settings.volume * 100));
+    ($('o-sens') as HTMLInputElement).value = String(Math.round(settings.sens * 100));
+    $('o-sens-v').textContent = settings.sens.toFixed(1);
+    ($('o-invert') as HTMLInputElement).checked = settings.invertY;
+    ($('o-music') as HTMLInputElement).checked = settings.music;
+    ($('o-image') as HTMLSelectElement).value = String(retro.preset);
+  };
+  ($('o-image') as HTMLSelectElement).innerHTML = RETRO_PRESETS.map((p, i) => `<option value="${i}">${p.name}</option>`).join('');
+  const openPause = () => {
+    if (!started || paused) return;
+    paused = true;
+    audio.setPaused(true);
+    // al pausar se guarda solo, si se puede
+    pauseMsg.textContent = cantSave() ? '' : (doSave(true), 'Guardado automático');
+    refreshPause();
+    pauseEl.classList.remove('hidden');
+    $('hud').style.visibility = 'hidden';
+  };
+  const resume = () => {
+    if (!paused) return;
+    paused = false;
+    pauseEl.classList.add('hidden');
+    $('hud').style.visibility = '';
+    audio.setPaused(false);
+    clock.getDelta();
+    input.lock();
+  };
+  input.onUnlock = openPause;
+  $('p-resume').addEventListener('click', resume);
+  $('p-save').addEventListener('click', () => { pauseMsg.textContent = doSave(false); refreshPause(); });
+  $('p-load').addEventListener('click', () => { const sv = loadGame(); if (sv) { applySave(sv); hud.toast('Partida cargada'); resume(); } });
+  $('p-new').addEventListener('click', () => {
+    if (!confirmNew) { confirmNew = true; $('p-new').textContent = '¿Seguro? Se borra lo guardado'; return; }
+    deleteGame();
+    location.reload();
   });
+  $('o-volume').addEventListener('input', (e) => { settings.volume = +(e.target as HTMLInputElement).value / 100; $('o-volume-v').textContent = (e.target as HTMLInputElement).value; applySettings(); });
+  $('o-sens').addEventListener('input', (e) => { settings.sens = +(e.target as HTMLInputElement).value / 100; $('o-sens-v').textContent = settings.sens.toFixed(1); applySettings(); });
+  $('o-invert').addEventListener('change', (e) => { settings.invertY = (e.target as HTMLInputElement).checked; applySettings(); });
+  $('o-music').addEventListener('change', (e) => { settings.music = (e.target as HTMLInputElement).checked; applySettings(); });
+  $('o-image').addEventListener('change', (e) => { settings.image = +(e.target as HTMLSelectElement).value; applySettings(); });
+  window.addEventListener('beforeunload', () => { if (started && !cantSave()) saveGame(gather()); });
 
   const nearestEnterable = (): Vehicle | null => {
     let best: Vehicle | null = null;
@@ -531,19 +674,31 @@ async function main() {
     requestAnimationFrame(frame);
     const raw = Math.min(clock.getDelta(), 0.05);
     input.poll();
+    // Start del mando: pausa / continuar
+    if (started && input.padPressed(9)) { if (paused) resume(); else openPause(); }
+    if (paused) {
+      retro.render(scene, camera, 0, sky.night);
+      input.endFrame();
+      return;
+    }
+    if (started) {
+      played += raw;
+      autosaveT += raw;
+      if (autosaveT > 120) { autosaveT = 0; if (!cantSave()) doSave(true); }
+    }
     if (input.wasPressed('KeyM')) {
       soundMode = (soundMode + 1) % 3;
       if (soundMode === 2) audio.toggleMute();
       if (soundMode === 0) audio.toggleMute();
-      if (music) music.enabled = soundMode === 0;
+      if (music) music.enabled = soundMode === 0 && settings.music;
       hud.toast(['Música y sonido', 'Sin música', 'Silencio'][soundMode]);
     }
     if (input.wasPressed('KeyL')) lightsMode = lightsMode === 'auto' ? 'on' : lightsMode === 'on' ? 'off' : 'auto';
     if (player.vehicle && (input.wasPressed('KeyR') || input.padPressed(8))) player.vehicle.reset(ground);
     if (input.wasPressed('KeyH')) hud.toggleHelp();
-    if (input.wasPressed('KeyV') || input.padPressed(9)) { rig.firstPerson = !rig.firstPerson; hud.toast(rig.firstPerson ? 'Primera persona' : 'Tercera persona'); }
+    if (input.wasPressed('KeyV') || input.padPressed(12)) { rig.firstPerson = !rig.firstPerson; hud.toast(rig.firstPerson ? 'Primera persona' : 'Tercera persona'); }
     if (input.wasPressed('KeyJ')) hud.toast(sky.toggleRain() ? 'Empieza a llover' : 'Deja de llover');
-    if (input.wasPressed('KeyP')) hud.toast(`Imagen: ${retro.cycle()}`);
+    if (input.wasPressed('KeyP')) { hud.toast(`Imagen: ${retro.cycle()}`); settings.image = retro.preset; saveSettings(settings); }
     if (input.wasPressed('KeyN')) timeBoost = timeBoost === 1 ? 20 : timeBoost === 20 ? 120 : 1;
     transition = Math.max(0, transition - raw);
     // ---- armas (a pie)
@@ -714,6 +869,7 @@ async function main() {
   (window as unknown as { __madriz: unknown }).__madriz = {
     player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
+    pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */
     tp: (x: number, z: number) => {
       const y = ground.heightAt(x, z);

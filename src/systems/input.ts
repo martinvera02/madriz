@@ -10,6 +10,8 @@ export class Input {
   mouseDY = 0;
   wheel = 0;
   locked = false;
+  /** Se ha soltado el ratón (Esc o cambio de ventana): el juego se pausa. */
+  onUnlock: (() => void) | null = null;
 
   constructor(private target: HTMLElement) {
     window.addEventListener('keydown', (e) => {
@@ -21,7 +23,9 @@ export class Input {
     window.addEventListener('blur', () => this.down.clear());
     target.addEventListener('click', () => this.lock());
     document.addEventListener('pointerlockchange', () => {
+      const was = this.locked;
       this.locked = document.pointerLockElement === target;
+      if (was && !this.locked) { this.down.clear(); this.onUnlock?.(); }
     });
     // botones del ratón como teclas virtuales: Mouse0 (izquierdo), Mouse2 (derecho); rueda acumulada
     window.addEventListener('mousedown', (e) => {
@@ -56,7 +60,11 @@ export class Input {
   padPressed(i: number) { return !!this.padBtn[i] && !this.padPrev[i]; }
 
   lock() {
-    if (!this.locked) this.target.requestPointerLock?.();
+    if (!this.locked) {
+      // tras salir con Esc, Chrome rechaza volver a capturar durante ~1 s: se ignora el error
+      const r = this.target.requestPointerLock?.() as unknown as Promise<void> | undefined;
+      r?.catch?.(() => {});
+    }
   }
 
   isDown(code: string) { return this.down.has(code); }

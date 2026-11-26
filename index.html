@@ -42,17 +42,43 @@
         <div><kbd>E</kbd> hablar · entrar en bares y tiendas · pedir</div>
         <div><kbd>1</kbd>–<kbd>5</kbd> / rueda armas · <kbd>Clic dcho.</kbd> apuntar · <kbd>Clic</kbd> disparar / golpear · <kbd>R</kbd> recargar</div>
         <div><kbd>J</kbd> lluvia · <kbd>P</kbd> píxel · <kbd>N</kbd> reloj · <kbd>M</kbd> música / sonido</div>
-        <div><kbd>H</kbd> ocultar esta ayuda</div>
+        <div><kbd>Esc</kbd> pausa · guardar · opciones · <kbd>H</kbd> ocultar esta ayuda</div>
       </div>
     </div>
     <div id="start">
       <div class="start-inner">
-        <div class="kicker">MADRID · ESCALA 1:1 · PROTOTIPO 0.8</div>
+        <div class="kicker">MADRID · ESCALA 1:1 · PROTOTIPO 0.9</div>
         <h1>MADRIZ</h1>
         <div class="tagline">La ciudad no duerme. Tú tampoco.</div>
-        <button id="play" disabled>Cargando…</button>
+        <div class="start-buttons">
+          <button id="play" disabled>Cargando…</button>
+          <button id="newgame" class="ghost hidden">Nueva partida</button>
+        </div>
+        <p id="save-info" class="hidden"></p>
         <p id="loading">Preparando…</p>
         <p class="small"><kbd>WASD</kbd> <kbd>Ratón</kbd> <kbd>F</kbd> coger coches <kbd>V</kbd> primera persona · mando compatible · con sonido</p>
+      </div>
+    </div>
+    <div id="pause" class="hidden">
+      <div class="pause-panel">
+        <div class="kicker">PAUSA</div>
+        <div id="pause-stats"></div>
+        <div class="pause-menu">
+          <button id="p-resume">Continuar</button>
+          <button id="p-save">Guardar partida</button>
+          <button id="p-load">Cargar última partida</button>
+          <button id="p-new" class="ghost">Nueva partida</button>
+        </div>
+        <div id="pause-msg"></div>
+        <div class="pause-opts">
+          <b>OPCIONES</b>
+          <label>Volumen <input id="o-volume" type="range" min="0" max="100" step="5" /><output id="o-volume-v"></output></label>
+          <label>Sensibilidad del ratón <input id="o-sens" type="range" min="40" max="250" step="10" /><output id="o-sens-v"></output></label>
+          <label class="check"><input id="o-invert" type="checkbox" /> Invertir eje vertical</label>
+          <label class="check"><input id="o-music" type="checkbox" /> Música</label>
+          <label>Imagen <select id="o-image"></select></label>
+        </div>
+        <p class="pause-foot">Se guarda solo cada 2 minutos si no te busca la policía · <kbd>Esc</kbd> pausa · Start en el mando</p>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

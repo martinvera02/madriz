@@ -79,7 +79,7 @@ export class CityAudio {
   /** Dentro de un local: la calle se oye amortiguada. */
   setIndoor(k: number) {
     this.indoor = k;
-    if (this.ctx && !this.muted) this.master.gain.setTargetAtTime(0.85 * (1 - 0.7 * k), this.ctx.currentTime, 0.3);
+    if (this.ctx && !this.muted) this.master.gain.setTargetAtTime(this.volume * (1 - 0.7 * k), this.ctx.currentTime, 0.3);
   }
 
   // ---- muestras grabadas (bancos de sonido libres, ver README): disparos y recargas
@@ -172,7 +172,7 @@ export class CityAudio {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 4;
     this.master = ctx.createGain();
-    this.master.gain.value = 0.85;
+    this.master.gain.value = this.muted ? 0 : this.volume;
     this.master.connect(comp).connect(ctx.destination);
     this.makeNoise();
 
@@ -208,8 +208,22 @@ export class CityAudio {
 
   toggleMute() {
     this.muted = !this.muted;
-    if (this.ctx) this.master.gain.setTargetAtTime(this.muted ? 0 : 0.85 * (1 - 0.7 * this.indoor), this.ctx.currentTime, 0.05);
+    if (this.ctx) this.master.gain.setTargetAtTime(this.muted ? 0 : this.volume * (1 - 0.7 * this.indoor), this.ctx.currentTime, 0.05);
     return this.muted;
+  }
+
+  /** Volumen general (0–1). */
+  volume = 0.85;
+  setVolume(v: number) {
+    this.volume = Math.max(0, Math.min(1, v));
+    if (this.ctx && !this.muted) this.master.gain.setTargetAtTime(this.volume * (1 - 0.7 * this.indoor), this.ctx.currentTime, 0.05);
+  }
+
+  /** Pausa: congela todo el audio (motor, ambiente, música) sin perder su estado. */
+  setPaused(on: boolean) {
+    if (!this.ctx) return;
+    if (on && this.ctx.state === 'running') void this.ctx.suspend();
+    if (!on && this.ctx.state === 'suspended') void this.ctx.resume();
   }
 
   // ------------------------------------------------------------------ utilidades

@@ -12,6 +12,9 @@ export class CameraRig {
   private readonly target = new THREE.Vector3();
   /** Primera persona: la cámara va en los ojos del personaje o en el asiento del conductor. */
   firstPerson = false;
+  /** Sensibilidad del ratón (multiplicador) y eje vertical invertido. */
+  sens = 1;
+  invertY = false;
   private fpCarYaw = 0; // giro de la cabeza respecto al coche
   private bob = 0;
   private curD = 5.5;
@@ -23,6 +26,8 @@ export class CameraRig {
   addShake(amount: number) { this.shake = Math.min(1, this.shake + amount); }
 
   update(dt: number, mouseDX: number, mouseDY: number, focus: THREE.Vector3, opts: { inCar: boolean; carHeading: number; speed: number; lookBack?: boolean; padX?: number; padY?: number; eye?: THREE.Vector3; walkSpeed?: number; aiming?: boolean }) {
+    mouseDX *= this.sens;
+    mouseDY *= this.sens * (this.invertY ? -1 : 1);
     if (opts.padX || opts.padY) { mouseDX += (opts.padX ?? 0) * 900 * dt; mouseDY += (opts.padY ?? 0) * 600 * dt; }
     if (this.firstPerson && opts.eye) { this.updateFirstPerson(dt, mouseDX, mouseDY, opts as typeof opts & { eye: THREE.Vector3 }); return; }
     if (mouseDX || mouseDY) {

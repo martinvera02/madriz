@@ -129,6 +129,12 @@ export class RetroRenderer {
 
   get presetName() { return RETRO_PRESETS[this.preset].name; }
 
+  setPreset(i: number) {
+    this.preset = ((Math.round(i) % RETRO_PRESETS.length) + RETRO_PRESETS.length) % RETRO_PRESETS.length;
+    this.resize();
+    return this.presetName;
+  }
+
   cycle() {
     this.preset = (this.preset + 1) % RETRO_PRESETS.length;
     this.resize();
