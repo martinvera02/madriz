@@ -175,7 +175,8 @@ export function buildBuildings(
     }
 
     const { gmin, ground, cx, cz } = p0;
-    let effH = b.h;
+    // altura 0 en OSM = desconocida (no «a ras de suelo»): cinco plantas, como el caserío de alrededor
+    let effH = b.h > 0 ? b.h : 15;
     if (!ov && b.est && !b.part && green.topAt(cx, cz) > -Infinity) effH = Math.min(effH, 5.2);
     const top = ground + Math.max(Math.min(effH, ov?.maxH ?? Infinity), 2.5);
     const bottom = b.mh > 0.5 ? ground + b.mh : gmin - 0.6;

@@ -9,8 +9,11 @@ Three.js + TypeScript + Vite, se juega en el navegador.
 npm install
 node tools/fetch-data.mjs centro   # descarga OSM + relieve → public/data/ (solo la primera vez, ~2 min)
 npm run dev                        # abre http://localhost:5173
-npm run build                      # build de producción en dist/
+npm run build                      # comprueba tipos y genera la build de producción en dist/
+npm test                           # tests (Vitest): colisiones, suelos, GPS, partida guardada, datos del mapa
 ```
+
+Cada push a `main` pasa por GitHub Actions (`.github/workflows/ci.yml`): tests, tipos y build.
 
 Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defecto, el anochecer), `?lluvia` para empezar lloviendo, `?zona=centro` para elegir zona.
 
@@ -44,6 +47,18 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar, stick derecho cámara,
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
+
+## Versión 0.17: orden en la casa
+
+Versión sin novedades jugables: prepara el proyecto para seguir creciendo.
+
+- **Tests** con Vitest (31): colisiones, suelos de puentes y sótanos, A* del GPS con sentidos únicos, partida
+  guardada y opciones, nombres de lugar y una revisión de los datos del mapa que busca las trampas de OSM.
+- **Integración continua**: GitHub Actions pasa los tests, los tipos y la build en cada push.
+- **Código troceado**: los interiores en `world/landmarks/` (uno por edificio), la construcción de la ciudad en
+  `world/buildWorld.ts` y las consultas de lugar en `world/places.ts`. `main.ts` baja de 1.163 a ~1.020 líneas.
+- **Arreglo** que encontraron los tests: tres bloques de viviendas que OSM trae con altura 0 (entre ellos el de
+  Svenson en Fuencarral) salían como cajas de 2,5 m; ahora tienen cinco plantas.
 
 ## Versión 0.16: puentes de Madrid Río, Plaza Mayor y Plaza de España
 
@@ -322,21 +337,29 @@ Zona incluida: distrito Centro y alrededores (Plaza de España – Atocha, Manza
 
 ```
 tools/fetch-data.mjs        descarga OSM (API 0.6) + relieve (terrarium) y genera public/data/<zona>.json/.bin
+tests/                      Vitest: colisiones, Ground.heightAt, A* del GPS, guardado, lugares, datos del mapa
 src/
-  main.ts                   carga, bucle de juego, entrar/salir de coches, nombres de calles
+  main.ts                   sistemas de juego, bucle, interacción (E/F), pausa y guardado
   config.ts                 utilidades (RNG con semilla, ángulos…)
   world/
+    buildWorld.ts           monta la ciudad entera y la trocea en celdas (no crea sistemas de juego)
     realData.ts             formato de los datos y carga
     terrain.ts              relieve + suelo pintado (zonas, calles peatonales) + minimapa
-    roads.ts                calzadas 3D, marcas viales, pasos de cebra, puentes (Ground = suelo + tableros)
+    roads.ts                calzadas 3D, marcas viales, pasos de cebra (Ground = suelo + tableros + suelos interiores)
     buildings.ts            extrusión de edificios con patios, colisiones por aristas
     buildingMaterial.ts     shader de fachadas (6 estilos)
     iconic.ts               fachadas y remates de los edificios emblemáticos, fuentes y estatuas
+    landmarks/              edificios con interior: common.ts (tipos, gente, rótulos) y un archivo por edificio
+    arch.ts                 Kit: muros con huecos, forjados, escaleras, bóvedas y mobiliario en coordenadas locales
+    urban.ts                puentes de Madrid Río, Plaza Mayor, Plaza de España y el túnel de Bailén
+    water.ts                Manzanares, estanques y fuentes
+    places.ts               verde alrededor y nombre del lugar
     props.ts                árboles y farolas
     collision.ts, sky.ts
-  entities/  character.ts, player.ts, vehicle.ts (con pendientes y saltos)
-  systems/   roadGraph.ts, traffic.ts, pedestrians.ts, cameraRig.ts, input.ts
-  ui/hud.ts
+  entities/  character.ts, player.ts, vehicle.ts, fpArms.ts
+  systems/   roadGraph.ts, navigation.ts, traffic.ts, pedestrians.ts, police.ts, missions.ts, save.ts…
+  render/    retroPost.ts, streaming.ts
+  ui/        hud.ts, worldMap.ts
 ```
 
 ## Datos y licencias

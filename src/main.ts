@@ -1,18 +1,7 @@
 import * as THREE from 'three';
-import { loadWorld } from './world/realData';
-import { Terrain, buildGround } from './world/terrain';
-import { Ground, buildRoads } from './world/roads';
-import { buildViaduct } from './world/viaduct';
-import { buildStreetFurniture } from './world/streetFurniture';
-import { FacadeDetail, buildRoofProps } from './world/facadeDetail';
 import { setShopNight } from './world/shopfronts';
-import { CarwayIndex } from './world/spatial';
 import { TrafficLights } from './systems/trafficLights';
-import { buildBuildings, pointInRing } from './world/buildings';
-import { makeFacadeOverride, buildIconic, buildFacadeDetails } from './world/iconic';
-import { buildProps } from './world/props';
-import { CollisionWorld } from './world/collision';
-import { Sky } from './world/sky';
+import { makeGreenAt, makePlaceNamer } from './world/places';
 import { Input } from './systems/input';
 import { CameraRig } from './systems/cameraRig';
 import { RoadGraph } from './systems/roadGraph';
@@ -35,10 +24,9 @@ import { Missions, type MissionCtx } from './systems/missions';
 import { Shops } from './systems/shops';
 import { Navigation, fmtDist, fmtEta } from './systems/navigation';
 import { WorldMap } from './ui/worldMap';
-import { Water } from './world/water';
-import { buildBridges, buildPlazaMayor, buildPlazaEspana, bridgeLog } from './world/urban';
-import { landmarkBuildings, buildLandmarks, cutTerrain, type Landmark } from './world/landmarkInteriors';
-import { DrawDistance, splitGroup, splitInstancedGroup } from './render/streaming';
+import { bridgeLog } from './world/urban';
+import type { Landmark } from './world/landmarks';
+import { buildWorld } from './world/buildWorld';
 import type { MapIcon } from './ui/mapIcons';
 import { loadGame, saveGame, deleteGame, loadSettings, saveSettings, describeSaveTime, describePlayed, type SaveData } from './systems/save';
 import { RETRO_PRESETS } from './render/retroPost';
@@ -73,98 +61,10 @@ window.addEventListener('resize', () => {
 
 async function main() {
   // ---------- Mundo real ----------
-  const { data, heights } = await loadWorld(ZONE, say);
-  const attribEl = document.getElementById('attrib');
-  if (attribEl && data.attribution) attribEl.textContent = data.attribution + ' · Sonidos: V. Sevedge (CC BY 3.0), SpringySpringo (CC0)';
-  say('Modelando el relieve…'); await frameYield();
-  const terrain = new Terrain(data, heights);
-  const ground = new Ground(terrain);
-  const collision = new CollisionWorld();
-  const groundRes = buildGround(data, terrain);
-  scene.add(groundRes.group);
-
-  say('Trazando calles…'); await frameYield();
-  const roads = buildRoads(data, ground, collision);
-  scene.add(roads.group);
-  if (roads.viaduct) scene.add(buildViaduct(roads.viaduct, terrain, collision));
-
-  say(`Levantando ${data.buildings.length.toLocaleString('es-ES')} edificios…`); await frameYield();
-  // edificios emblemáticos con interior recorrible: su bloque de OSM se sustituye por el modelo propio
-  const landmarkDefs = landmarkBuildings(data);
-  const baseOverride = makeFacadeOverride(data);
-  const { group: bGroup, placed, specials, facades, roofSpots } = buildBuildings(data, terrain, collision,
-    // los contornos de puente que OSM etiqueta como edificio (Segovia, del Rey) se modelan en urban.ts
-    (b) => (landmarkDefs.has(b) || /^(puente|pasarela|presa|viaducto)\b/i.test(b.name ?? '') ? { skip: true } : baseOverride(b)), groundRes.minimap);
-  say('Amueblando el Mercado de San Miguel y San Ginés…'); await frameYield();
-  const landmarks: Landmark[] = buildLandmarks(data, ground, collision, landmarkDefs);
-  for (const lm of landmarks) scene.add(lm.group);
-  // taxis en las paradas de los edificios (Atocha)
-  const landmarkCars: Vehicle[] = [];
-  for (const lm of landmarks) for (const pk of lm.parking ?? []) {
-    const v = new Vehicle(VEHICLE_TYPES[pk.type]);
-    v.place(pk.x, pk.z, pk.heading, ground.heightAt(pk.x, pk.z));
-    scene.add(v.mesh);
-    landmarkCars.push(v);
-  }
-  // sin terreno bajo los edificios con interior (sótanos y escaleras)
-  cutTerrain(groundRes.group, landmarks.map((l) => ({ pts: l.footprint, floor: l.floor })));
-  scene.add(bGroup);
-  const roofProps = buildRoofProps(roofSpots);
-  scene.add(roofProps);
-  const facadeDetail = new FacadeDetail(facades);
-  scene.add(facadeDetail.group);
-  say('Llenando fuentes, estanques y el Manzanares…'); await frameYield();
-  const water = new Water(data, ground, collision);
-  scene.add(water.group);
-  // puentes de Madrid Río, Plaza Mayor y plaza de España con el túnel de Bailén
-  say('Puentes de Madrid Río, Plaza Mayor y plaza de España…'); await frameYield();
-  const bridges = buildBridges(data, ground, collision, water);
-  const plazaMayor = buildPlazaMayor(data, ground, collision);
-  const plazaEspana = buildPlazaEspana(data, ground, collision);
-  scene.add(bridges, plazaMayor, plazaEspana.group);
-  cutTerrain(groundRes.group, plazaEspana.cuts);
-  const iconic = buildIconic(data, placed, ground, collision);
-  scene.add(iconic);
-  const bigDetails = buildFacadeDetails(data, placed);
-  scene.add(bigDetails);
-
-  say('Plantando árboles y farolas…'); await frameYield();
-  const props = buildProps(data, ground, collision);
-  scene.add(props.group);
-  const wind = (props.group.userData as { wind: { value: number } }).wind;
-  say('Colocando bancos, quioscos y marquesinas…'); await frameYield();
-  const carway = new CarwayIndex(data);
-  const furniture = buildStreetFurniture(data, specials, ground, collision, carway);
-  scene.add(furniture);
-  const sky = new Sky(scene, props.streetLightMat, props.lightPoolMat);
-  if (params.has('lluvia')) sky.raining = true;
-  // Texturas de resolución contenida: ampliación sin suavizar (píxel visible de cerca)
-  scene.traverse((o) => {
-    const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-    if (!m) return;
-    for (const mt of Array.isArray(m) ? m : [m]) {
-      for (const k of ['map', 'emissiveMap'] as const) {
-        const t = (mt as THREE.MeshStandardMaterial)[k];
-        if (t && t.magFilter !== THREE.NearestFilter) { t.magFilter = THREE.NearestFilter; t.needsUpdate = true; }
-      }
-    }
-  });
-  // Calzada mojada: más oscura y brillante cuando llueve
-  const wetMats: THREE.MeshStandardMaterial[] = [];
-  scene.traverse((o) => {
-    if ((o.name === 'calzada' || o.name === 'aceras') && (o as THREE.Mesh).material) wetMats.push((o as THREE.Mesh).material as THREE.MeshStandardMaterial);
-  });
-  const baseRough = wetMats.map((m) => m.roughness);
-  const baseCol = wetMats.map((m) => m.color.clone());
-  if (params.has('hora')) sky.time = Number(params.get('hora')) % 24;
-  sky.speed = 24 / (45 * 60); // un día completo en 45 minutos
-
-  // Límites del mapa
-  const B = data.bounds;
-  collision.addBox(B.x0 - 50, B.z0 - 50, B.x0, B.z1 + 50, 1e4);
-  collision.addBox(B.x1, B.z0 - 50, B.x1 + 50, B.z1 + 50, 1e4);
-  collision.addBox(B.x0 - 50, B.z0 - 50, B.x1 + 50, B.z0, 1e4);
-  collision.addBox(B.x0 - 50, B.z1, B.x1 + 50, B.z1 + 50, 1e4);
+  const {
+    data, terrain, ground, collision, groundRes, landmarks, landmarkCars, specials, facades, facadeDetail, water,
+    wind, carway, sky, wetMats, baseRough, baseCol, drawDist,
+  } = await buildWorld(scene, ZONE, params, say, frameYield);
 
   // ---------- Sistemas ----------
   say('Llamando a los taxistas…'); await frameYield();
@@ -177,14 +77,6 @@ async function main() {
   const lights = new TrafficLights(data, carGraph, ground, collision, carway);
   scene.add(lights.group);
 
-  // ---------- Rendimiento: trocear la ciudad en celdas y dibujar por distancia ----------
-  say('Optimizando la ciudad…'); await frameYield();
-  const CELL = Number(params.get('celda') ?? 260);
-  for (const g of [groundRes.group, roads.group, bGroup, bigDetails, furniture, water.group, bridges, plazaMayor, plazaEspana.group]) splitGroup(g, CELL);
-  splitInstancedGroup(roofProps, CELL);
-  // los cachivaches de las azoteas no aportan sombra visible y multiplicaban las llamadas de la sombra
-  roofProps.traverse((o) => { o.castShadow = false; });
-  const drawDist = new DrawDistance();
   let lodT = 0;
   let lmInside: Landmark | null = null;
   let liftRide = false;
@@ -192,14 +84,7 @@ async function main() {
   renderer.info.autoReset = false;
   let fpsN = 0, fpsT = 0, fpsLast = 0;
   const fpsEl = document.getElementById('fps')!;
-  for (const g of [groundRes.group, roads.group, bGroup, bigDetails]) drawDist.add(g, 'city');
-  drawDist.add(iconic, 'landmark');
-  drawDist.add(water.group, 'city');
-  for (const g of [bridges, plazaMayor, plazaEspana.group]) drawDist.add(g, 'city');
-  drawDist.add(furniture, 'detail');
-  drawDist.add(props.group, 'props');
   drawDist.add(lights.group, 'props');
-  drawDist.add(roofProps, 'roof');
   traffic.lights = lights;
   peds.lights = lights;
   peds.carway = carway;
@@ -208,17 +93,8 @@ async function main() {
   scene.add(fx.group);
   Vehicle.fx = fx;
   const audio = new CityAudio();
-  // Densidad de arbolado en celdas de 40 m (para pájaros y grillos)
-  const treeCells = new Map<string, number>();
-  for (let i = 0; i < data.trees.length; i += 2) {
-    const k = Math.floor(data.trees[i] / 40) + ',' + Math.floor(data.trees[i + 1] / 40);
-    treeCells.set(k, (treeCells.get(k) ?? 0) + 1);
-  }
-  const greenAt = (x: number, z: number) => {
-    let n = 0;
-    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) n += treeCells.get((Math.floor(x / 40) + i) + ',' + (Math.floor(z / 40) + j)) ?? 0;
-    return Math.min(1, n / 40);
-  };
+  // densidad de arbolado alrededor (para pájaros y grillos)
+  const greenAt = makeGreenAt(data.trees);
   let lightsMode: 'auto' | 'on' | 'off' = 'auto';
   const eye = new THREE.Vector3();
   const arms = new FirstPersonArms();
@@ -482,23 +358,8 @@ async function main() {
   headlight.target.position.set(0, 0, 20);
   let headlightCar: Vehicle | null = null;
 
-  // Nombres de lugares: plazas y parques con nombre, o la calle más cercana
-  const named = data.areas.filter((a) => a.name && (a.kind === 'plaza' || a.kind === 'grass' || a.kind === 'wood')).map((a) => {
-    let xmin = Infinity, xmax = -Infinity, zmin = Infinity, zmax = -Infinity;
-    for (let i = 0; i < a.pts.length; i += 2) {
-      xmin = Math.min(xmin, a.pts[i]); xmax = Math.max(xmax, a.pts[i]);
-      zmin = Math.min(zmin, a.pts[i + 1]); zmax = Math.max(zmax, a.pts[i + 1]);
-    }
-    return { a, xmin, xmax, zmin, zmax, area: (xmax - xmin) * (zmax - zmin) };
-  }).sort((p, q) => p.area - q.area);
-  const placeName = (x: number, z: number): string => {
-    for (const n of named) {
-      if (x < n.xmin || x > n.xmax || z < n.zmin || z > n.zmax) continue;
-      if (pointInRing(x, z, n.a.pts)) return n.a.name!;
-    }
-    const e = walkGraph.nearestEdgeFast(x, z, (ed) => !!ed.road.name);
-    return e?.road.name ?? 'Madrid';
-  };
+  // nombres de lugares: plazas y parques con nombre, o la calle más cercana
+  const placeName = makePlaceNamer(data.areas, (x, z) => walkGraph.nearestEdgeFast(x, z, (ed) => !!ed.road.name)?.road.name);
 
   // ---------- Bucle ----------
   const clock = new THREE.Clock();
