@@ -19,6 +19,8 @@ export class Kit {
   private readonly uz: number;
   private readonly buckets = new Map<string, THREE.BufferGeometry[]>();
   readonly mats = new Map<string, THREE.Material>();
+  /** Materiales que no proyectan sombra (cubiertas que dejan pasar la luz del día, vidrio…). */
+  readonly noShadow = new Set<string>(['glass']);
 
   /** `ox,oz`: origen en el mundo; `angle`: rumbo de la x local; `y0`: cota del suelo de la planta baja. */
   constructor(readonly ox: number, readonly oz: number, readonly angle: number, readonly y0: number,
@@ -172,9 +174,13 @@ export class Kit {
     s = 0;
     for (const o of ops) {
       cs(s, o.s0, y0, y1);
-      // ventana (hueco que no llega al suelo) o acristalado: no se puede atravesar
-      if (o.y0 > y0 + 0.3 || o.glass) cs(o.s0, o.s1, y0, y1);
-      else if (o.y1 < y1 - 0.05) cs(o.s0, o.s1, o.y1, y1);
+      // puerta: hueco sin vidrio que arranca del suelo del muro o del suelo de la planta (y≈0)
+      const door = !o.glass && o.y0 <= Math.max(y0 + 0.3, 0.35);
+      if (!door) cs(o.s0, o.s1, y0, y1);
+      else {
+        if (o.y0 > y0 + 0.05) cs(o.s0, o.s1, y0, o.y0);
+        if (o.y1 < y1 - 0.05) cs(o.s0, o.s1, o.y1, y1);
+      }
       s = o.s1;
     }
     cs(s, L, y0, y1);
@@ -269,7 +275,7 @@ export class Kit {
       const g = mergeGeometries(gs.map((x) => { for (const k of Object.keys(x.attributes)) if (!['position', 'normal', 'uv'].includes(k)) x.deleteAttribute(k); return x; }));
       if (!g) continue;
       const m = new THREE.Mesh(g, this.mats.get(mat) ?? new THREE.MeshStandardMaterial({ color: 0xff00ff }));
-      m.castShadow = mat !== 'glass' && !mat.startsWith('glow');
+      m.castShadow = !this.noShadow.has(mat) && !mat.startsWith('glow');
       m.receiveShadow = true;
       if (mat === 'glass') m.renderOrder = 2;
       this.group.add(m);

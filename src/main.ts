@@ -96,6 +96,14 @@ async function main() {
   say('Amueblando el Mercado de San Miguel y San Ginés…'); await frameYield();
   const landmarks: Landmark[] = buildLandmarks(data, ground, collision, landmarkDefs);
   for (const lm of landmarks) scene.add(lm.group);
+  // taxis en las paradas de los edificios (Atocha)
+  const landmarkCars: Vehicle[] = [];
+  for (const lm of landmarks) for (const pk of lm.parking ?? []) {
+    const v = new Vehicle(VEHICLE_TYPES[pk.type]);
+    v.place(pk.x, pk.z, pk.heading, ground.heightAt(pk.x, pk.z));
+    scene.add(v.mesh);
+    landmarkCars.push(v);
+  }
   // sin terreno bajo los edificios con interior (sótanos y escaleras)
   cutTerrain(groundRes.group, landmarks.map((l) => ({ pts: l.footprint, floor: l.floor })));
   scene.add(bGroup);
@@ -170,6 +178,7 @@ async function main() {
   const drawDist = new DrawDistance();
   let lodT = 0;
   let lmInside: Landmark | null = null;
+  let liftRide = false;
   // contar las dos pasadas (escena + sombra) y el posproceso de cada imagen juntos
   renderer.info.autoReset = false;
   let fpsN = 0, fpsT = 0, fpsLast = 0;
@@ -215,6 +224,7 @@ async function main() {
 
   // Coche del jugador aparcado en la calle con tráfico más cercana a Sol
   const parked: Vehicle[] = [];
+  parked.push(...landmarkCars);
   const myCar = new Vehicle(VEHICLE_TYPES.deportivo, 0xb8202a);
   {
     const near = carGraph.nearestEdge(km0.x, km0.z, (e) => e.road.w >= 6 && e.len > 10 && e.road.hw !== 'living_street');
@@ -732,6 +742,28 @@ async function main() {
     if (deadT > 0 || shops.open) return null;
     if (!inside) { const a = missions.action() ?? shops.action(); if (a) return a; }
     if (player.vehicle) return null;
+    // edificios con interior: ascensores y gente con la que hablar o a la que pedir
+    for (const lm of landmarks) {
+      const la = lm.action?.(player.pos);
+      if (la) return la;
+      const n = lm.npcNear(player.pos);
+      if (!n) continue;
+      const bubble = n.pos.clone().setY(n.pos.y);
+      if (n.offer) {
+        const of = n.offer;
+        return {
+          text: `Pedir ${of.text} (${of.price.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €)`,
+          run: () => {
+            n.face(player.pos);
+            if (!pay(of.price)) { hud.say(n.name, 'Uy, no te llega. Otro día.', bubble); return; }
+            hud.say(n.name, of.reply[Math.floor(Math.random() * of.reply.length)], bubble);
+            player.health = Math.min(100, player.health + of.heal);
+            player.ch.setProp('coffee'); player.ch.setAction('drink'); drinkT = 4;
+          },
+        };
+      }
+      return { text: `Hablar con ${n.name}`, run: () => { n.face(player.pos); hud.say(n.name, n.line(), bubble); } };
+    }
     const armed = !WEAPONS[combat.weapon].melee;
     if (inside) {
       const room = inside;
@@ -1054,7 +1086,13 @@ async function main() {
     {
       const p = player.vehicle ? player.vehicle.pos : player.pos;
       let inLm: Landmark | null = null;
-      for (const lm of landmarks) { lm.update(raw, p); if (!inLm && lm.inside(p.x, p.z, p.y)) inLm = lm; }
+      for (const lm of landmarks) { lm.update(raw, p, sky.time); if (!inLm && lm.inside(p.x, p.z, p.y)) inLm = lm; }
+      // ascensor: el suelo sube con la cabina
+      let lf: number | null = null;
+      for (const lm of landmarks) { const y = lm.floorAt?.(player.pos) ?? null; if (y !== null) lf = y; }
+      if (lf !== null) { player.floorOverride = lf; liftRide = true; }
+      else if (liftRide) { liftRide = false; if (!inside) player.floorOverride = null; }
+      if (inLm) sky.hemi.intensity += inLm.fill;
       if (!inside) {
         if (inLm) {
           const fw = new THREE.Vector3(Math.sin(rig.yaw), 0, Math.cos(rig.yaw));

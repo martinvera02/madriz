@@ -29,7 +29,7 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 | L | Luces: automáticas → encendidas → apagadas |
 | R | Enderezar el coche |
 | V | Primera / tercera persona (a pie y al volante) |
-| E | Empezar misión (marcador naranja) · armería · taller · hablar con la gente · entrar y salir de bares y tiendas · pedir en el mostrador (cuesta dinero) · echar una moneda a Lucía |
+| E | Hablar con la gente de los interiores y pedir · ascensores · empezar misión (marcador naranja) · armería · taller · hablar con la gente · entrar y salir de bares y tiendas · pedir en el mostrador (cuesta dinero) · echar una moneda a Lucía |
 | 1–5 / rueda | Puños, bate, pistola, subfusil, escopeta |
 | Clic derecho | Apuntar (cámara al hombro) / guardia con los puños |
 | Clic izquierdo | Disparar / golpear |
@@ -44,6 +44,24 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar, stick derecho cámara,
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
+
+## Versión 0.15: Atocha, el Círculo y gente con la que hablar
+
+- **Estación de Atocha**: fachada a la glorieta del Emperador Carlos V con sus dos pabellones de ladrillo y piedra
+  rematados en chapitel, el gran testero acristalado con nervios en abanico, el reloj (marca la hora del juego),
+  rótulo y marquesina de hierro y cristal; nave de 150 m con muros de ladrillo, ventanales en arco y bóveda de hierro
+  y cristal con sus cerchas. Dentro: vestíbulo con el panel de salidas y el mostrador de información, el **jardín
+  tropical** (palmeras, helechos, el estanque con rocas y tortugas, bancos y farolas), cafés y la terraza del
+  restaurante en alto con su escalera. Fuera: bolardos, farolas fernandinas, bancos y parada de taxis con taxis.
+- **Círculo de Bellas Artes**: edificio rehecho sobre sus partes reales, con pilastras de orden gigante, cornisas,
+  torre escalonada y la **Minerva** en lo alto. Dentro: vestíbulo de mármol con la escalera de honor, el **café**
+  con columnas, arañas y barra, y un **ascensor de verdad** (la cabina sube contigo) hasta la **azotea**: tarima,
+  barandilla de vidrio, bar, mesas con sombrilla, sofás y jardineras.
+- **Gente con la que hablar** en todos los interiores (E): cada uno contesta a su manera, se gira y gesticula; a los
+  dependientes y camareros se les puede **pedir** (cucurucho de jamón, ostras, vermut, chocolate con churros,
+  bocadillo de calamares, café del Círculo…), con su precio y la vida que da.
+- **Arreglos**: ya se puede entrar en San Ginés (las puertas contaban como ventanas); el Mercado tiene luz de día
+  (la cubierta ya no lo apaga) y más luz de relleno dentro de cada edificio.
 
 ## Versión 0.14: interiores reales (1.ª tanda)
 
