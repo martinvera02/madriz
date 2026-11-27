@@ -197,14 +197,24 @@ export function buildIconic(data: WorldData, placed: PlacedBuilding[], ground: G
   const fountain = (x: number, z: number, r: number, centre: (g: THREE.Group, y: number) => void) => {
     const y = ground.terrain.heightAt(x, z);
     const g = new THREE.Group();
-    const basin = new THREE.Mesh(new THREE.CylinderGeometry(r, r + 0.3, 0.9, 40), stone());
-    basin.position.y = 0.45;
-    const w = new THREE.Mesh(new THREE.CylinderGeometry(r - 0.5, r - 0.5, 0.1, 40), water());
-    w.position.y = 0.93;
-    g.add(basin, w);
+    // si OSM trae el vaso de la fuente, el pilón y el agua los pone el sistema de agua (water.ts)
+    const fromOsm = data.areas.some((a) => {
+      if (a.kind !== 'water') return false;
+      let cx = 0, cz = 0;
+      for (let i = 0; i < a.pts.length; i += 2) { cx += a.pts[i]; cz += a.pts[i + 1]; }
+      const n = a.pts.length / 2;
+      return Math.hypot(cx / n - x, cz / n - z) < r + 2;
+    });
+    if (!fromOsm) {
+      const basin = new THREE.Mesh(new THREE.CylinderGeometry(r, r + 0.3, 0.9, 40), stone());
+      basin.position.y = 0.45;
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(r - 0.5, r - 0.5, 0.1, 40), water());
+      w.position.y = 0.93;
+      g.add(basin, w);
+      collision.addCircle(x, z, r + 0.3, y + 0.9);
+    }
     centre(g, 0.8);
     g.position.set(x, y, z);
-    collision.addCircle(x, z, r + 0.3, y + 0.9);
     return add(g);
   };
 

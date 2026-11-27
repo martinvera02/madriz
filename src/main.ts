@@ -35,6 +35,7 @@ import { Missions, type MissionCtx } from './systems/missions';
 import { Shops } from './systems/shops';
 import { Navigation, fmtDist, fmtEta } from './systems/navigation';
 import { WorldMap } from './ui/worldMap';
+import { Water } from './world/water';
 import { DrawDistance, splitGroup, splitInstancedGroup } from './render/streaming';
 import type { MapIcon } from './ui/mapIcons';
 import { loadGame, saveGame, deleteGame, loadSettings, saveSettings, describeSaveTime, describePlayed, type SaveData } from './systems/save';
@@ -92,6 +93,9 @@ async function main() {
   scene.add(roofProps);
   const facadeDetail = new FacadeDetail(facades);
   scene.add(facadeDetail.group);
+  say('Llenando fuentes, estanques y el Manzanares…'); await frameYield();
+  const water = new Water(data, ground, collision);
+  scene.add(water.group);
   const iconic = buildIconic(data, placed, ground, collision);
   scene.add(iconic);
   const bigDetails = buildFacadeDetails(data, placed);
@@ -149,7 +153,7 @@ async function main() {
   // ---------- Rendimiento: trocear la ciudad en celdas y dibujar por distancia ----------
   say('Optimizando la ciudad…'); await frameYield();
   const CELL = Number(params.get('celda') ?? 260);
-  for (const g of [groundRes.group, roads.group, bGroup, bigDetails, furniture]) splitGroup(g, CELL);
+  for (const g of [groundRes.group, roads.group, bGroup, bigDetails, furniture, water.group]) splitGroup(g, CELL);
   splitInstancedGroup(roofProps, CELL);
   // los cachivaches de las azoteas no aportan sombra visible y multiplicaban las llamadas de la sombra
   roofProps.traverse((o) => { o.castShadow = false; });
@@ -161,6 +165,7 @@ async function main() {
   const fpsEl = document.getElementById('fps')!;
   for (const g of [groundRes.group, roads.group, bGroup, bigDetails]) drawDist.add(g, 'city');
   drawDist.add(iconic, 'landmark');
+  drawDist.add(water.group, 'city');
   drawDist.add(furniture, 'detail');
   drawDist.add(props.group, 'props');
   drawDist.add(lights.group, 'props');
@@ -976,7 +981,7 @@ async function main() {
       audio.update(raw, {
         camera, playerCar: v, playerPos: focus, footSpeed: player.footSpeed, grounded: player.grounded,
         cars: [...traffic.cars, ...parked], pedCount: pc, night: sky.night, hour: sky.time, green: greenAt(focus.x, focus.z),
-        beep: v ? null : lights.crossingBeep(focus.x, focus.z), solDist: Math.hypot(focus.x - km0.x, focus.z - km0.z), rain: sky.rain,
+        beep: v ? null : lights.crossingBeep(focus.x, focus.z), solDist: Math.hypot(focus.x - km0.x, focus.z - km0.z), rain: sky.rain, water: inside ? 0 : water.loudness(focus.x, focus.z, focus.y),
       });
     }
     sky.update(raw * timeBoost, focus, raw, camera.position);
@@ -1032,6 +1037,7 @@ async function main() {
       ...(nav.waypoint && !missions.currentTarget && !inside ? [{ x: nav.waypoint.x, z: nav.waypoint.z, color: '#8fb2e8' }] : []),
     ]);
 
+    water.update(raw, sky.night);
     drawDist.update(raw, camera.position, (scene.fog as THREE.Fog).far);
     if (settings.fps) {
       fpsN++; fpsT += clock.elapsedTime - fpsLast; fpsLast = clock.elapsedTime;
@@ -1054,7 +1060,7 @@ async function main() {
 
   // Depuración en consola
   (window as unknown as { __madriz: unknown }).__madriz = {
-    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
+    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, water, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
     pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */

@@ -25,6 +25,8 @@ export interface AudioFrame {
   beep: { d: number; fast: boolean } | null;
   solDist: number; // distancia al reloj de la Casa de Correos
   rain?: number;
+  /** 0..1: fuentes o río cerca. */
+  water?: number;
 }
 
 interface EngineVoice {
@@ -51,6 +53,7 @@ export class CityAudio {
   private screech!: GainNode;
   private screechF!: BiquadFilterNode;
   private crickets!: GainNode;
+  private waterG: GainNode | null = null;
   private rainG!: GainNode;
 
   private engine: EngineVoice | null = null;
@@ -183,6 +186,7 @@ export class CityAudio {
     this.screechF = this.bp(1900, 6);
     this.screech = this.loop(this.white, [this.screechF, this.bp(2300, 3)], 0);
     this.rainG = this.loop(this.pink, [this.hp(900), this.lp(7000)], 0);
+    this.waterG = this.loop(this.white, [this.bp(1500, 0.45), this.lp(4200)], 0);
 
     // Grillos: portadora aguda modulada en trenes de pulsos
     const cr = ctx.createOscillator();
@@ -386,6 +390,7 @@ export class CityAudio {
     }
     const day = 1 - f.night;
     const p = f.playerPos;
+    if (this.waterG) this.set(this.waterG.gain, (f.water ?? 0) * 0.16 * (1 - 0.8 * this.indoor), 0.4);
 
     // ---- tráfico: densidad y velocidad de los coches cercanos
     let dens = 0;

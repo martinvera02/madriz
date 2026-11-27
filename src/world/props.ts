@@ -118,6 +118,15 @@ export function buildProps(data: WorldData, ground: Ground, collision: Collision
     return false;
   };
   for (let k = trees.length - 1; k >= 0; k--) if (onCarway(trees[k].x, trees[k].z)) trees.splice(k, 1);
+  // ni árboles dentro de estanques, fuentes o del Manzanares
+  const waters = data.areas.filter((a) => a.kind === 'water').map((a) => {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let i = 0; i < a.pts.length; i += 2) { x0 = Math.min(x0, a.pts[i]); x1 = Math.max(x1, a.pts[i]); z0 = Math.min(z0, a.pts[i + 1]); z1 = Math.max(z1, a.pts[i + 1]); }
+    return { a, x0: x0 - 2, x1: x1 + 2, z0: z0 - 2, z1: z1 + 2 };
+  });
+  const inWater = (x: number, z: number) => waters.some((w) => x > w.x0 && x < w.x1 && z > w.z0 && z < w.z1 &&
+    pointInRing(x, z, w.a.pts) && !(w.a.holes ?? []).some((h) => pointInRing(x, z, h)));
+  for (let k = trees.length - 1; k >= 0; k--) if (inWater(trees[k].x, trees[k].z)) trees.splice(k, 1);
 
   // ---------- Geometrías con volumen: copas de varias masas, coníferas por pisos, palmeras
   const jitter = (g: THREE.BufferGeometry, amp: number, seed: number) => {

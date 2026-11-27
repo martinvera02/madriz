@@ -45,6 +45,22 @@ Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
 
+## Versión 0.13: agua
+
+- **Sistema de agua** (`src/world/water.ts`) a partir de los 237 polígonos de agua de OSM:
+  - **El Manzanares**: lámina que baja suavemente hacia el sur siguiendo el relieve del MDT (nivel por franjas de
+    40 m, suavizado y sin subir río abajo), con corriente animada, islas y muros de granito hasta el paseo de
+    Madrid Río.
+  - **Estanques** (Estanque Grande del Retiro, Palacio de Cristal, láminas de Madrid Río…): agua quieta con ondas
+    y bordillo de piedra; el del Estanque Grande, más alto, como su balaustrada.
+  - **Fuentes**: pilón de piedra elevado, lámina, surtidor central con paraguas de agua, arcos alrededor en las
+    grandes (Cibeles, Neptuno…) y espuma. Si OSM trae vasos anidados, se hacen pisos. De noche se iluminan.
+    Las piscinas y láminas rectangulares no llevan surtidor.
+  - Todos los chorros y la espuma van en una sola malla cada uno; el agua entra en las celdas de rendimiento.
+- Sonido de agua al acercarse a fuentes y al río.
+- Ya no salen árboles dentro de estanques, fuentes o el río.
+- [Plan de monumentos, plazas, puentes e interiores](docs/plan-monumentos.md).
+
 ## Versión 0.12: rendimiento
 
 Medido en el mismo punto (Puerta del Sol, mediodía), por imagen, contando la pasada de la escena y la de la sombra:
