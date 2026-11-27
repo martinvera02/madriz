@@ -707,16 +707,7 @@ export function buildIconic(data: WorldData, placed: PlacedBuilding[], ground: G
     add(col);
     statue(angel.x, y + 7.8, angel.z, 1.2, bronze());
   }
-  const cervantes = data.pois.find((p) => p.name === 'Monumento a Cervantes');
-  if (cervantes) {
-    const y = ground.terrain.heightAt(cervantes.x, cervantes.z);
-    const tower = new THREE.Mesh(new THREE.BoxGeometry(5, 18, 4), m(0xd2c8b3));
-    tower.position.set(cervantes.x, y + 9, cervantes.z - 3);
-    add(tower);
-    horseRider(cervantes.x - 2.5, y, cervantes.z + 3, 0.8, 0);
-    horseRider(cervantes.x + 2.5, y, cervantes.z + 3, 0.8, 0);
-    collision.addBox(cervantes.x - 2.5, cervantes.z - 5, cervantes.x + 2.5, cervantes.z - 1, y + 18);
-  }
+  // Monumento a Cervantes: lo modela urban.ts (plaza de España)
   const km0 = poi('Kilómetro Cero');
   if (km0) {
     const y = ground.terrain.heightAt(km0.x, km0.z);

@@ -45,6 +45,25 @@ Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
 
+## Versión 0.16: puentes de Madrid Río, Plaza Mayor y Plaza de España
+
+- **Puentes del Manzanares**, cada uno con su tipo: **Puente de Segovia** (sillería de granito, nueve arcos que
+  arrancan del agua, tajamares, pretil con bolas herrerianas y farolas), **Puente del Rey** (tres arcos de piedra),
+  **Reina Victoria** (arco metálico), **San Isidro** (tablero de hormigón sobre pilas), las **presas** con sus
+  compuertas y las **pasarelas** de acero con barandilla y pilas (tramo a tramo si son curvas o se ramifican).
+- **Arreglo**: OSM etiqueta el contorno de los puentes de Segovia y del Rey como «edificio», y se levantaban como un
+  bloque de cinco plantas encima del río. Ya no.
+- **Plaza Mayor**: estatua ecuestre de **Felipe III** sobre su pedestal, despiece de granito del suelo, farolas,
+  terrazas con sombrillas, pintura alegórica en la **Casa de la Panadería** (diseño propio, con los balcones libres)
+  y el **Arco de Cuchilleros** con su escalinata.
+- **Plaza de España y túnel de Bailén**: el túnel que pasa por debajo de la plaza, la calle Bailén y el paseo hasta
+  los Jardines de Sabatini, con rampas de entrada y salida, muros, techo con tiras de luz y el ramal hacia la Cuesta
+  de San Vicente; se puede bajar andando o en coche. Encima, el **paseo arbolado** con bancos y farolas, y el
+  **Monumento a Cervantes** rehecho (torre, globo, Cervantes sentado, don Quijote y Sancho en bronce).
+- **Límites**: el trazado del túnel está dibujado a mano a partir de la ciudad real (los datos del mapa omiten los
+  túneles y desde aquí no se puede consultar OpenStreetMap en directo), así que puede desviarse unos metros. El
+  tráfico de la IA todavía no lo usa: va por la superficie.
+
 ## Versión 0.15: Atocha, el Círculo y gente con la que hablar
 
 - **Estación de Atocha**: fachada a la glorieta del Emperador Carlos V con sus dos pabellones de ladrillo y piedra

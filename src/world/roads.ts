@@ -83,7 +83,8 @@ export class Ground {
       const h = d.ha + (d.hb - d.ha) * u;
       if (d.inner) {
         // dentro de un edificio: el suelo sobre el que estás (o el de debajo si vienes de arriba), aunque quede bajo la calle
-        if (y === undefined ? h > inner : y > h - 0.6 && h > inner) inner = h;
+        // sin altura de referencia (aparecer en la calle) solo cuentan los suelos que no quedan bajo el terreno
+        if (y === undefined ? h > inner && h >= t - 0.5 : y > h - 0.6 && y < h + 2.2 && h > inner) inner = h;
         continue;
       }
       if (h <= t + 0.2) continue;

@@ -11,9 +11,9 @@ Coordenadas en metros del mapa (origen en el Kilómetro Cero, x hacia el este, z
 | # | Bloque | Por qué en este orden |
 |---|---|---|
 | ✅ | Agua: fuentes, estanques y Manzanares | Base para Madrid Río, Colón y Plaza de España |
-| 1 | Plaza Mayor | La plaza más visitada; ya tiene soportales, falta lo que la hace reconocible |
-| 2 | Plaza de España y paseo a Sabatini | Pide datos nuevos (túneles) y cambia la circulación |
-| 3 | Puentes de Madrid Río | Se apoya en el río recién hecho |
+| ✅ | Plaza Mayor (0.16) | La plaza más visitada; ya tiene soportales, falta lo que la hace reconocible |
+| ✅ | Plaza de España y paseo a Sabatini (0.16) | Pide datos nuevos (túneles) y cambia la circulación |
+| ✅ | Puentes de Madrid Río (0.16) | Se apoya en el río recién hecho |
 | 4 | Almudena, Puertas de Toledo y San Vicente, Colón | Modelos propios uno a uno |
 | 5 | Atocha y Príncipe Pío | Fachadas y entorno (glorietas, marquesinas, accesos) |
 | 6 | Más fachadas emblemáticas | Repaso de la lista de edificios con nombre |

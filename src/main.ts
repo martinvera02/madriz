@@ -36,6 +36,7 @@ import { Shops } from './systems/shops';
 import { Navigation, fmtDist, fmtEta } from './systems/navigation';
 import { WorldMap } from './ui/worldMap';
 import { Water } from './world/water';
+import { buildBridges, buildPlazaMayor, buildPlazaEspana, bridgeLog } from './world/urban';
 import { landmarkBuildings, buildLandmarks, cutTerrain, type Landmark } from './world/landmarkInteriors';
 import { DrawDistance, splitGroup, splitInstancedGroup } from './render/streaming';
 import type { MapIcon } from './ui/mapIcons';
@@ -92,7 +93,8 @@ async function main() {
   const landmarkDefs = landmarkBuildings(data);
   const baseOverride = makeFacadeOverride(data);
   const { group: bGroup, placed, specials, facades, roofSpots } = buildBuildings(data, terrain, collision,
-    (b) => (landmarkDefs.has(b) ? { skip: true } : baseOverride(b)), groundRes.minimap);
+    // los contornos de puente que OSM etiqueta como edificio (Segovia, del Rey) se modelan en urban.ts
+    (b) => (landmarkDefs.has(b) || /^(puente|pasarela|presa|viaducto)\b/i.test(b.name ?? '') ? { skip: true } : baseOverride(b)), groundRes.minimap);
   say('Amueblando el Mercado de San Miguel y San Ginés…'); await frameYield();
   const landmarks: Landmark[] = buildLandmarks(data, ground, collision, landmarkDefs);
   for (const lm of landmarks) scene.add(lm.group);
@@ -114,6 +116,13 @@ async function main() {
   say('Llenando fuentes, estanques y el Manzanares…'); await frameYield();
   const water = new Water(data, ground, collision);
   scene.add(water.group);
+  // puentes de Madrid Río, Plaza Mayor y plaza de España con el túnel de Bailén
+  say('Puentes de Madrid Río, Plaza Mayor y plaza de España…'); await frameYield();
+  const bridges = buildBridges(data, ground, collision, water);
+  const plazaMayor = buildPlazaMayor(data, ground, collision);
+  const plazaEspana = buildPlazaEspana(data, ground, collision);
+  scene.add(bridges, plazaMayor, plazaEspana.group);
+  cutTerrain(groundRes.group, plazaEspana.cuts);
   const iconic = buildIconic(data, placed, ground, collision);
   scene.add(iconic);
   const bigDetails = buildFacadeDetails(data, placed);
@@ -171,7 +180,7 @@ async function main() {
   // ---------- Rendimiento: trocear la ciudad en celdas y dibujar por distancia ----------
   say('Optimizando la ciudad…'); await frameYield();
   const CELL = Number(params.get('celda') ?? 260);
-  for (const g of [groundRes.group, roads.group, bGroup, bigDetails, furniture, water.group]) splitGroup(g, CELL);
+  for (const g of [groundRes.group, roads.group, bGroup, bigDetails, furniture, water.group, bridges, plazaMayor, plazaEspana.group]) splitGroup(g, CELL);
   splitInstancedGroup(roofProps, CELL);
   // los cachivaches de las azoteas no aportan sombra visible y multiplicaban las llamadas de la sombra
   roofProps.traverse((o) => { o.castShadow = false; });
@@ -186,6 +195,7 @@ async function main() {
   for (const g of [groundRes.group, roads.group, bGroup, bigDetails]) drawDist.add(g, 'city');
   drawDist.add(iconic, 'landmark');
   drawDist.add(water.group, 'city');
+  for (const g of [bridges, plazaMayor, plazaEspana.group]) drawDist.add(g, 'city');
   drawDist.add(furniture, 'detail');
   drawDist.add(props.group, 'props');
   drawDist.add(lights.group, 'props');
@@ -1131,7 +1141,7 @@ async function main() {
 
   // Depuración en consola
   (window as unknown as { __madriz: unknown }).__madriz = {
-    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, landmarks, water, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
+    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, bridgeLog, landmarks, water, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
     pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */

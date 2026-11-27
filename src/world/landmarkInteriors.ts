@@ -1325,7 +1325,7 @@ export function buildLandmarks(data: WorldData, ground: Ground, collision: Colli
  * (así no asoma el terreno en las salas aunque la calle tenga cuesta) y los triángulos que quedan enteros dentro
  * se quitan (sótanos y huecos de escalera).
  */
-export function cutTerrain(group: THREE.Object3D, polys: { pts: number[]; floor: number }[]) {
+export function cutTerrain(group: THREE.Object3D, polys: { pts: number[]; floor: number; floorAt?: (x: number, z: number) => number }[]) {
   group.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
@@ -1343,7 +1343,8 @@ export function cutTerrain(group: THREE.Object3D, polys: { pts: number[]; floor:
       for (const p of polys) {
         if (!inPoly(p.pts, v.x, v.z)) continue;
         inside[i] = 1; any = true;
-        if (v.y > p.floor - 0.6) { v.y = p.floor - 0.6; v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z); }
+        const fl = p.floorAt ? p.floorAt(v.x, v.z) : p.floor;
+        if (v.y > fl - 0.6) { v.y = fl - 0.6; v.applyMatrix4(inv); pos.setXYZ(i, v.x, v.y, v.z); }
         break;
       }
     }
