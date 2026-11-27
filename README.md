@@ -7,7 +7,7 @@ Calles, edificios, parques y relieve salen de OpenStreetMap y del LiDAR del IGN;
 física, tráfico y peatones que siguen la red viaria real, policía que te persigue por las calles, misiones,
 interiores en los que se entra andando y una ciudad que cambia del día a la noche.
 
-**[▶ Jugar la demo](https://martinvera02.github.io/madriz/)** · navegador de escritorio con WebGL 2 · descarga ~3 MB
+**[▶ Jugar la demo](https://martinvera02.github.io/madriz/)** · navegador de escritorio con WebGL 2 · descarga ~7 MB · conviene tener 8 GB de RAM
 
 ![Recorrido por MADRIZ: la Puerta del Sol desde el aire, el Puente de Segovia, la Plaza Mayor, el Mercado de San Miguel, el jardín de Atocha, la azotea del Círculo, el helicóptero de la policía y un coche en llamas](docs/media/madriz.gif)
 
@@ -20,10 +20,12 @@ interiores en los que se entra andando y una ciudad que cambia del día a la noc
 
 ## Qué hay
 
-- **Madrid real, 1:1**: unos 16.000 edificios con su altura, calles con su ancho y sus sentidos, parques, el
-  Manzanares, fuentes y estanques, y el relieve del LiDAR (la cuesta de la calle Segovia se nota al volante).
+- **Madrid real, 1:1**: del Manzanares a Plaza de Castilla, las Cinco Torres y la estación de Chamartín (unos 35 km²),
+  con más de 36.000 edificios con su altura, calles con su ancho y sus sentidos, parques, el Manzanares, fuentes y
+  estanques, y el relieve del LiDAR (la cuesta de la calle Segovia se nota al volante).
 - **Monumentos y lugares reconocibles**: Plaza Mayor, Puente de Segovia y los puentes de Madrid Río, Plaza de España
-  con el túnel de Bailén, Atocha, Gran Vía, el Viaducto…
+  con el túnel de Bailén, Atocha, Gran Vía, el Viaducto, la Castellana, Nuevos Ministerios, las torres inclinadas de
+  la Puerta de Europa y el skyline de las Cinco Torres…
 - **Interiores sin pantallas de carga**: Mercado de San Miguel, Chocolatería San Ginés, la estación de Atocha con su
   jardín tropical y el Círculo de Bellas Artes, con ascensor hasta la azotea. Gente con la que hablar y a la que pedir.
 - **Conducción** con modelo de neumáticos, transferencia de pesos y cambio de marchas; daños visibles (abolladuras,
@@ -75,7 +77,8 @@ flowchart LR
 
 - **Datos reales en un JSON propio.** `tools/fetch-data.mjs` descarga OSM y el relieve, proyecta todo a metros desde
   el Kilómetro Cero (X este, Z sur) y lo guarda en un formato compacto: el juego no depende de servicios externos al
-  arrancar. Los datos de OSM traen trampas (puentes etiquetados como edificios, alturas a 0); hay tests que las buscan.
+  arrancar. Una zona puede ser la unión de varios rectángulos (ahora, el centro y el norte); fuera de la unión el mapa
+  se cierra solo. Los datos de OSM traen trampas (puentes etiquetados como edificios, alturas a 0); hay tests que las buscan.
 - **Un solo `Ground.heightAt(x, z, y)` para todo lo que se pisa**: terreno, aceras, tableros de puente y suelos
   interiores. La altura actual `y` decide si estás encima del puente o debajo, o en qué planta del edificio; así los
   sótanos y el túnel de Bailén funcionan bajo la calle sin casos especiales.
@@ -95,14 +98,14 @@ flowchart LR
   cristales y faros se rompen colapsando sus triángulos.
 - **Sonido casi todo sintetizado**: motores, ciudad, lluvia, sirena y rotor con osciladores, ruido filtrado y
   paneo 3D de Web Audio; solo los disparos y recargas son muestras (CC).
-- **Calidad**: 43 tests con Vitest sobre los módulos puros (colisiones, suelos, A*, daños, coberturas, guardado,
+- **Calidad**: 46 tests con Vitest sobre los módulos puros (colisiones, suelos, A*, daños, coberturas, guardado,
   integridad de los datos) y GitHub Actions en cada push. La demo se publica sola en GitHub Pages.
 
 ## Arrancar
 
 ```bash
 npm install
-node tools/fetch-data.mjs centro   # descarga OSM + relieve → public/data/ (solo la primera vez, ~2 min)
+node tools/fetch-data.mjs madrid   # descarga OSM + relieve → public/data/ (solo para regenerar, ~15 min)
 npm run dev                        # abre http://localhost:5173
 npm run build                      # comprueba tipos y genera la build de producción en dist/
 npm test                           # tests (Vitest): colisiones, suelos, GPS, partida guardada, datos del mapa
@@ -111,7 +114,7 @@ npm test                           # tests (Vitest): colisiones, suelos, GPS, pa
 Cada push a `main` pasa por GitHub Actions (`.github/workflows/ci.yml`): tests, tipos y build; y
 `.github/workflows/pages.yml` publica la demo en GitHub Pages.
 
-Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defecto, el anochecer), `?lluvia` para empezar lloviendo, `?zona=centro` para elegir zona.
+Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defecto, el anochecer), `?lluvia` para empezar lloviendo, `?zona=<nombre>` para cargar otra zona generada con el script (por defecto, `madrid`).
 
 ## Controles
 

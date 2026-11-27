@@ -104,8 +104,11 @@ export function buildGround(data: WorldData, terrain: Terrain): GroundResult {
     };
     return mt;
   };
+  const boxes = data.boxes ?? [bounds];
   for (let tz = Z0; tz < Z1; tz += TILE) {
     for (let tx = X0; tx < X1; tx += TILE) {
+      // trozos fuera de la zona (esquinas vacías del envoltorio): sin textura de detalle, solo el relieve liso
+      if (!boxes.some((b) => tx < b.x1 && tx + TILE > b.x0 && tz < b.z1 && tz + TILE > b.z0)) continue;
       const c = document.createElement('canvas');
       c.width = c.height = TILE * PX_PER_M;
       paintGround(c.getContext('2d')!, data, tx, tz, PX_PER_M, false);
@@ -128,6 +131,9 @@ export function buildGround(data: WorldData, terrain: Terrain): GroundResult {
         pos.setXYZ(k, x, terrain.heightAt(x, z), z);
       }
       geo.computeVertexNormals();
+      // una vez en la tarjeta gráfica, los lienzos (4 MB cada uno) sobran: se vacían para liberar memoria
+      tex.onUpdate = () => { c.width = c.height = 1; };
+      matTex.onUpdate = () => { mc.width = mc.height = 1; };
       const mesh = new THREE.Mesh(geo, mat(tex, matTex));
       mesh.receiveShadow = true;
       group.add(mesh);

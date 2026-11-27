@@ -2,6 +2,21 @@
 
 De la más reciente a la más antigua. El README principal resume el proyecto; aquí está el detalle de cada versión.
 
+## Versión 0.20: hacia el norte, hasta las Cinco Torres
+
+- **El mapa crece hacia el norte**: del límite anterior (Sagasta, Alberto Aguilera) hasta Plaza de Castilla, las
+  Cinco Torres y la estación de Chamartín, pasando por Chamberí, Cuatro Caminos, Tetuán, Nuevos Ministerios, el
+  Bernabéu y la Castellana. De 16.000 a **36.556 edificios** y de 13 a unos 35 km².
+- Las **torres de la Puerta de Europa** salen inclinadas (OSM las tiene planta a planta) y las **Cinco Torres** con su
+  altura real (de 181 a 249 m).
+- **Zonas de varios rectángulos**: `tools/fetch-data.mjs` admite uniones de rectángulos (la zona `madrid` es el centro
+  más el norte); el juego cierra con muros las esquinas vacías del envoltorio (`world/zoneShape.ts`, con tests).
+- **Menos memoria en el suelo**: no se pintan texturas fuera de la zona y los lienzos de cada trozo se vacían al
+  subirse a la tarjeta gráfica.
+- **Coste**: la carga tarda el doble (en el entorno de pruebas, de 19 a 35 s) y la memoria del navegador pasa de unos
+  0,7 a 1,6 GB. El siguiente paso es cargar la ciudad por zonas para que no crezca con cada barrio nuevo.
+- Los datos del centro solo (`centro.json`) salen del repositorio; se regeneran con `node tools/fetch-data.mjs centro`.
+
 ## Versión 0.19: escaparate
 
 - **Demo pública** en GitHub Pages (`.github/workflows/pages.yml`): cada push a `main` pasa los tests, construye y publica.

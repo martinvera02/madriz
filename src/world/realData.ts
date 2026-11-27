@@ -38,6 +38,8 @@ export interface WorldData {
   zone: string;
   origin: { lat: number; lon: number };
   bounds: { x0: number; x1: number; z0: number; z1: number };
+  /** Rectángulos que forman la zona (si falta, la zona es `bounds`). */
+  boxes?: { x0: number; x1: number; z0: number; z1: number }[];
   terrain: TerrainInfo;
   roadNodes: number[];
   roads: RoadData[];

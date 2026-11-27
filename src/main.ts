@@ -34,7 +34,7 @@ import { RETRO_PRESETS } from './render/retroPost';
 import { shopDoors, type ShopDoor } from './world/shopfronts';
 
 const params = new URLSearchParams(location.search);
-const ZONE = params.get('zona') ?? 'centro';
+const ZONE = params.get('zona') ?? 'madrid';
 const loadingEl = document.getElementById('loading')!;
 const say = (msg: string) => { loadingEl.textContent = msg; };
 const frameYield = () => new Promise((r) => requestAnimationFrame(() => r(null)));

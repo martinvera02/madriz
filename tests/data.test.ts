@@ -3,13 +3,13 @@ import { readFileSync } from 'node:fs';
 import type { WorldData } from '../src/world/realData';
 
 /**
- * Comprobaciones de los datos del mapa (public/data/centro.json). Buscan las trampas de OSM que ya
+ * Comprobaciones de los datos del mapa (public/data/madrid.json). Buscan las trampas de OSM que ya
  * nos han mordido: contornos de puente etiquetados como edificio, índices rotos, coordenadas fuera.
  */
-const data = JSON.parse(readFileSync(new URL('../public/data/centro.json', import.meta.url), 'utf8')) as WorldData;
+const data = JSON.parse(readFileSync(new URL('../public/data/madrid.json', import.meta.url), 'utf8')) as WorldData;
 const B = data.bounds;
 
-describe('datos de centro.json', () => {
+describe('datos de madrid.json', () => {
   it('todas las calles apuntan a nodos que existen', () => {
     const n = data.roadNodes.length / 2;
     const bad = data.roads.filter((r) => r.n.some((i) => !Number.isInteger(i) || i < 0 || i >= n));

@@ -16,13 +16,21 @@ import { PNG } from 'pngjs';
 
 // Origen de coordenadas: Kilómetro Cero (Puerta del Sol). X = este, Z = sur (norte = -Z), 1 unidad = 1 m.
 const ORIGIN = { lat: 40.41669, lon: -3.70358 };
+// Cada zona es uno o varios rectángulos (lat/lon). Los datos se recortan a la unión; el relieve cubre el
+// rectángulo que la envuelve.
+const CENTRO = { s: 40.4020, n: 40.4305, w: -3.7265, e: -3.6795 };
+// del límite norte del centro (Sagasta, Alberto Aguilera) a Plaza de Castilla, las Cuatro Torres y Chamartín
+const NORTE = { s: 40.4305, n: 40.4855, w: -3.7130, e: -3.6700 };
 const ZONES = {
-  centro: { s: 40.4020, n: 40.4305, w: -3.7265, e: -3.6795 },
+  centro: [CENTRO],
+  madrid: [CENTRO, NORTE],
 };
 
-const zoneName = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 'centro';
-const Z = ZONES[zoneName];
-if (!Z) throw new Error('Zona desconocida: ' + zoneName);
+const zoneName = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? 'madrid';
+const ZB = ZONES[zoneName];
+if (!ZB) throw new Error('Zona desconocida: ' + zoneName);
+/** Rectángulo que envuelve la zona. */
+const Z = { s: Math.min(...ZB.map((b) => b.s)), n: Math.max(...ZB.map((b) => b.n)), w: Math.min(...ZB.map((b) => b.w)), e: Math.max(...ZB.map((b) => b.e)) };
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const CACHE = path.join(ROOT, 'tools', 'cache');
@@ -89,10 +97,10 @@ function parseOsm(xml) {
 
 console.log(`Descargando OSM para "${zoneName}"…`);
 const cells = [];
-for (let lat = Z.s; lat < Z.n - 1e-9; lat += STEP) for (let lon = Z.w; lon < Z.e - 1e-9; lon += STEP) cells.push([lon, lat]);
+for (const B of ZB) for (let lat = B.s; lat < B.n - 1e-9; lat += STEP) for (let lon = B.w; lon < B.e - 1e-9; lon += STEP) cells.push([lon, lat, B]);
 let k = 0;
-for (const [lon, lat] of cells) {
-  const bbox = [lon, lat, Math.min(lon + STEP, Z.e), Math.min(lat + STEP, Z.n)].map((v) => v.toFixed(5)).join(',');
+for (const [lon, lat, B] of cells) {
+  const bbox = [lon, lat, Math.min(lon + STEP, B.e), Math.min(lat + STEP, B.n)].map((v) => v.toFixed(5)).join(',');
   const file = path.join(CACHE, `osm_${bbox.replace(/,/g, '_')}.osm`);
   const cached = fs.existsSync(file);
   const xml = await get(`https://api.openstreetmap.org/api/0.6/map?bbox=${bbox}`, file);
@@ -131,7 +139,9 @@ if (missingWays.size) {
 
 // ---------------------------------------------------------------- Conversión
 const BX = { x0: toX(Z.w), x1: toX(Z.e), z0: toZ(Z.n), z1: toZ(Z.s) };
-const inBox = (x, z, pad = 0) => x >= BX.x0 - pad && x <= BX.x1 + pad && z >= BX.z0 - pad && z <= BX.z1 + pad;
+/** Rectángulos de la zona en metros. */
+const BOXES = ZB.map((b) => ({ x0: toX(b.w), x1: toX(b.e), z0: toZ(b.n), z1: toZ(b.s) }));
+const inBox = (x, z, pad = 0) => BOXES.some((B) => x >= B.x0 - pad && x <= B.x1 + pad && z >= B.z0 - pad && z <= B.z1 + pad);
 
 function wayPts(nds) {
   const out = [];
@@ -591,6 +601,7 @@ const out = {
   zone: zoneName,
   origin: ORIGIN,
   bounds: { x0: r1(BX.x0), x1: r1(BX.x1), z0: r1(BX.z0), z1: r1(BX.z1) },
+  boxes: BOXES.map((B) => ({ x0: r1(B.x0), x1: r1(B.x1), z0: r1(B.z0), z1: r1(B.z1) })),
   terrain: { file: `${zoneName}-terrain.png`, w: tw, h: th, res: RES, x0: r1(BX.x0 - PAD), z0: r1(BX.z0 - PAD), base, scale: 0.01 },
   roadNodes,
   roads,

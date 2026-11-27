@@ -15,6 +15,7 @@ import { Water } from './water';
 import { buildBridges, buildPlazaMayor, buildPlazaEspana } from './urban';
 import { landmarkBuildings, buildLandmarks, cutTerrain, type Landmark } from './landmarks';
 import { Vehicle, VEHICLE_TYPES } from '../entities/vehicle';
+import { outsideCells } from './zoneShape';
 import { DrawDistance, splitGroup, splitInstancedGroup } from '../render/streaming';
 
 /**
@@ -115,6 +116,8 @@ export async function buildWorld(scene: THREE.Scene, zone: string, params: URLSe
   collision.addBox(B.x1, B.z0 - 50, B.x1 + 50, B.z1 + 50, 1e4);
   collision.addBox(B.x0 - 50, B.z0 - 50, B.x1 + 50, B.z0, 1e4);
   collision.addBox(B.x0 - 50, B.z1, B.x1 + 50, B.z1 + 50, 1e4);
+  // zona de varios rectángulos: muros en las esquinas del envoltorio que quedan fuera
+  for (const c of outsideCells(data.boxes ?? [B], B)) collision.addBox(c.x0, c.z0, c.x1, c.z1, 1e4);
 
   // Rendimiento: trocear la ciudad en celdas de CELL m y dibujar cada categoría hasta su distancia
   const CELL = Number(params.get('celda') ?? 260);
