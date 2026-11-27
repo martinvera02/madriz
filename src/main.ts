@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { setShopNight } from './world/shopfronts';
 import { TrafficLights } from './systems/trafficLights';
 import { makeGreenAt, makePlaceNamer } from './world/places';
+import { shielded } from './systems/cover';
 import { Input } from './systems/input';
 import { CameraRig } from './systems/cameraRig';
 import { RoadGraph } from './systems/roadGraph';
@@ -196,6 +197,20 @@ async function main() {
     if (player.vehicle === v) player.exit(collision, ground);
     rig.addShake(Math.max(0, 1 - pd / 40));
   };
+  // un coche que arde con el motor a cero acaba reventando
+  Vehicle.onExplode = explode;
+  /** Sólido para las coberturas: muros y cajas del mundo, y la carrocería de los coches (hasta 1,3 m). */
+  const solidAt = (x: number, y: number, z: number) => {
+    if (collision.pointBlocked(x, y, z)) return true;
+    for (const v of [...parked, ...traffic.cars, ...police.vehicles()]) {
+      if (v === player.vehicle || Math.abs(v.pos.x - x) > 4 || Math.abs(v.pos.z - z) > 4) continue;
+      if (y < v.pos.y || y > v.pos.y + (v.type.id === 'autobus' ? 2.8 : 1.3)) continue;
+      // caja orientada del coche (los dos círculos de las colisiones dejan un hueco en el centro)
+      const dx = x - v.pos.x, dz = z - v.pos.z, c = Math.cos(v.heading), sn = Math.sin(v.heading);
+      if (Math.abs(dx * c - dz * sn) < v.type.width / 2 && Math.abs(dx * sn + dz * c) < v.type.length / 2) return true;
+    }
+    return false;
+  };
 
   const combat: Combat = new Combat(collision, ground, {
     targets: (): Target[] => [...peds.targets(), ...routines.targets(), ...interiorTargets(), ...police.targets(), ...(inside ? [] : missions.targets())],
@@ -226,17 +241,53 @@ async function main() {
     if (Math.random() < THREE.MathUtils.clamp(0.75 - d / 40, 0.12, 0.6)) damagePlayer(player.vehicle ? 5 : 9);
   };
   // ---------- Policía, dinero y objetos ----------
-  const police: Police = new Police(data, scene, collision, ground, (a: THREE.Vector3, b: THREE.Vector3): boolean => {
+  /** ¿Se ve b desde a? (rayo contra el escenario) */
+  const lineOfSight = (a: THREE.Vector3, b: THREE.Vector3): boolean => {
     const d = b.clone().sub(a);
     const len = d.length();
     return combat.traceWorld(a, d.normalize(), len).distanceTo(a) >= len - 0.6;
+  };
+  const police: Police = new Police(data, scene, collision, ground, (a: THREE.Vector3, b: THREE.Vector3): boolean => {
+    return lineOfSight(a, b);
   });
-  police.onShoot = (from, to) => {
+  police.onShoot = (from, to, heavy) => {
     combat.npcShot(from, to, 0.05);
     const d = from.distanceTo(to);
-    if (Math.random() < THREE.MathUtils.clamp(0.7 - d / 45, 0.1, 0.55)) damagePlayer(player.vehicle ? 4 : 8);
+    if (Math.random() >= THREE.MathUtils.clamp(0.7 - d / 45, 0.1, 0.55)) return;
+    const car = player.vehicle;
+    if (!car) {
+      // a cubierto y sin asomarte, casi todo se lo come la cobertura
+      if (player.cover && shielded(player.cover, !player.aiming, from.x, from.z) && Math.random() < 0.85) {
+        fx.smoke(player.cover.x, player.pos.y + 1.0, player.cover.z, 0.05, 0.3);
+        return;
+      }
+      damagePlayer(heavy ? 11 : 8);
+      return;
+    }
+    // en coche, la carrocería se lleva casi todo: chapa, cristales y, con suerte para ellos, una rueda
+    const dir = to.clone().sub(from).normalize();
+    const hw = car.type.width / 2, hl = car.type.length / 2;
+    const p = car.pos.clone().add(new THREE.Vector3((Math.random() - 0.5) * hw * 2, 0.25 + Math.random() * 1.1, (Math.random() - 0.5) * hl * 2)
+      .applyAxisAngle(new THREE.Vector3(0, 1, 0), car.heading)).addScaledVector(dir, -0.6);
+    car.bulletHit(p, dir);
+    car.health -= 2.5;
+    if (Math.random() < 0.35) damagePlayer(4);
   };
   police.onSay = (pos, text) => hud.say('Policía', text, pos, true, 2.5);
+  // helicóptero derribado: revienta donde cae
+  police.onHeliDown = (pos) => {
+    audio.weapon('explosion', null, pos);
+    for (let k = 0; k < 60; k++) fx.smoke(pos.x + (Math.random() - 0.5) * 6, pos.y + Math.random() * 3, pos.z + (Math.random() - 0.5) * 6, Math.random() < 0.3 ? -1 : 0.95, 2 + Math.random() * 3);
+    for (const t of [...peds.targets(), ...routines.targets()]) {
+      const d = t.pos.distanceTo(pos);
+      if (d < 10) t.hit(150 * (1 - d / 10) + 10, (t.pos.x - pos.x) / (d || 1), (t.pos.z - pos.z) / (d || 1), true, pos);
+    }
+    const pd = (player.vehicle ?? player).pos.distanceTo(pos);
+    if (pd < 10) damagePlayer(80 * (1 - pd / 10));
+    rig.addShake(Math.max(0, 1 - pd / 60));
+    peds.alarm(pos, 90);
+    hud.toast('¡Helicóptero derribado!');
+  };
   peds.onRunOver = (p, v) => {
     if (v !== player.vehicle) return;
     police.crime(p.dead ? 'kill' : 'hurt', p.pos);
@@ -288,6 +339,13 @@ async function main() {
     },
     exitVehicle: () => { if (player.vehicle) player.exit(collision, ground); },
     alarm: (pos, r) => peds.alarm(pos, r),
+    los: (a, b) => lineOfSight(a, b),
+    shootAtPlayer: (from, heavy) => {
+      const to = (player.vehicle ? player.vehicle.pos : player.pos).clone();
+      to.y += 1.1;
+      police.onShoot?.(from, to, heavy);
+    },
+    landmark: (name) => landmarks.find((l) => l.name === name) ?? null,
   };
   const missions = new Missions(missionCtx);
   const shops = new Shops(missionCtx, combat, { get: () => money, pay: (eur) => pay(eur) });
@@ -689,7 +747,7 @@ async function main() {
       player.pos.copy(v.pos);
     } else if (deadT <= 0 && !shops.open) {
       player.aiming = aiming;
-      player.updateOnFoot(dt, input, rig.yaw, collision, ground);
+      player.updateOnFoot(dt, input, rig.yaw, collision, ground, solidAt);
       // atropellos al jugador
       if (!inside) for (const c of [...parked, ...traffic.cars]) {
         if (c.speed < 6 || Math.abs(c.pos.y - player.pos.y) > 2) continue;
@@ -702,7 +760,8 @@ async function main() {
         }
       }
     }
-    for (const v of parked) if (v !== player.vehicle && (v.speed > 0.05 || v.airborne)) v.update(dt, { throttle: 0, steer: 0, handbrake: true }, collision, ground);
+    // los aparcados solo se simulan si se mueven, o si arden (para que acaben reventando)
+    for (const v of parked) if (v !== player.vehicle && (v.speed > 0.05 || v.airborne || (v.health <= 0 && !v.burnt))) v.update(dt, { throttle: 0, steer: 0, handbrake: true }, collision, ground);
     const allCars = [...parked, ...traffic.cars, ...police.vehicles().filter((c) => c !== player.vehicle)];
     lights.update(dt);
     traffic.pedPositions = peds.peds.filter((p) => p.mode !== 'down').map((p) => p.pos);
@@ -786,12 +845,17 @@ async function main() {
       if (input.padPressed(5)) combat.cycle(1) && hud.toast(combat.def.name);
       if (input.padPressed(4)) combat.cycle(-1) && hud.toast(combat.def.name);
       if (input.wasPressed('KeyR') || input.padPressed(2)) combat.reload();
+      if (!shops.open && (input.wasPressed('KeyQ') || input.padPressed(11))) {
+        const was = !!player.cover;
+        if (player.toggleCover(solidAt)) hud.toast('A cubierto · A/D para moverte · Q para salir');
+        else if (!was) hud.toast('No hay nada donde cubrirse');
+      }
       const w = combat.def;
       aiming = (input.isDown('Mouse2') || input.pad.lt > 0.5) && drinkT <= 0;
       if (drinkT > 0) { drinkT -= raw; if (drinkT <= 0) player.ch.setAction('none'); }
       else {
         player.ch.setProp(w.prop);
-        player.ch.setAction(aiming ? w.aim : w.ready);
+        player.ch.setAction(aiming ? w.aim : player.crouched ? 'crouch' : w.ready);
       }
       player.ch.aimPitch = rig.pitch;
       const trigger = w.auto ? (input.isDown('Mouse0') || input.pad.rt > 0.5) : (input.wasPressed('Mouse0') || (input.pad.rt > 0.5 && !padRtWas));
@@ -812,7 +876,7 @@ async function main() {
           if (d < 25 && to.normalize().dot(dir) > 0.985) peds.surrender(p, player.pos);
         }
       }
-    } else { aiming = false; padRtWas = false; }
+    } else { aiming = false; padRtWas = false; player.cover = null; }
     // ---- muerte y vuelta al hospital
     if (deadT > 0) {
       deadT -= raw;
@@ -864,6 +928,9 @@ async function main() {
       let sp: THREE.Vector3 | null = null, sd = 220;
       if (!inside) for (const c of police.vehicles()) if (c.siren) { const d = c.pos.distanceTo(focus); if (d < sd) { sd = d; sp = c.pos; } }
       audio.siren(sp);
+      const h = police.heli;
+      audio.rotor(h && !h.crashed ? h.pos : null);
+      police.night = sky.night;
     }
     {
       const w = combat.def;
@@ -913,7 +980,7 @@ async function main() {
       v?.mesh.add(headlight, headlight.target);
       headlightCar = v;
     }
-    headlight.intensity = v && v.headlights ? Math.max(0.35, sky.night) * 600 : 0;
+    headlight.intensity = v && v.headlights ? Math.max(0.35, sky.night) * 600 * v.headOk : 0;
     if (v) hud.setCar({ name: v.type.name, gear: v.gear, rpm: v.rpm / v.type.mech.redline, health: v.health });
 
     parkedTimer += raw;
@@ -1002,7 +1069,7 @@ async function main() {
 
   // Depuración en consola
   (window as unknown as { __madriz: unknown }).__madriz = {
-    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, bridgeLog, landmarks, water, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
+    player, sky, traffic, peds, scene, solidAt, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, bridgeLog, landmarks, water, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
     pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */

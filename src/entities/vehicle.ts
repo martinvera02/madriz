@@ -3,6 +3,7 @@ import { clamp } from '../config';
 import { CollisionWorld } from '../world/collision';
 import type { Ground } from '../world/roads';
 import { Character, randomLook } from './character';
+import { dent, shatter, wheelAt, intactFraction } from './vehicleDamage';
 import { BODIES, buildModel, lightMaterial, wheelGeometry, vehicleUniforms, type Livery, type VehicleModel } from './vehicleModels';
 
 export { vehicleUniforms };
@@ -56,26 +57,33 @@ export const VEHICLE_TYPES: Record<string, VehicleType> = {
   deportivo: mk('deportivo', 'Deportivo', { mass: 1450, torque: 640, idle: 900, redline: 7400, gears: [3.3, 2.25, 1.65, 1.28, 1.03, 0.84], final: 3.5, drive: 'R', dragK: 0.33, mu: 1.16, brake: 1.15, cgFront: 0.5, cgH: 0.44 }, [[0xb8202a, 30], [0xf0c020, 12], [0x1a1a1a, 25], [0xf4f4f4, 15], [0x2350a8, 10], [0xff6a00, 8]], { engine: 'v8' }),
   taxi: mk('taxi', 'Taxi', { mass: 1420, torque: 320, idle: 700, redline: 5600, gears: [3.3, 1.95, 1.3, 1.0, 0.8, 0.68], final: 3.6, drive: 'F', dragK: 0.34, mu: 1.0, brake: 1.0, cgFront: 0.58, cgH: 0.52 }, [[0xf7f7f2, 1]], { livery: 'taxi', engine: 'hibrido' }),
   policia: mk('policia', 'Policía Municipal', { mass: 1500, torque: 430, idle: 750, redline: 6200, gears: [3.4, 2.1, 1.45, 1.1, 0.88, 0.72], final: 3.7, drive: 'F', dragK: 0.34, mu: 1.08, brake: 1.1, cgFront: 0.57, cgH: 0.52 }, [[0xf4f4f2, 1]], { livery: 'policia', engine: 'gasolina', accel: 11, maxSpeed: 34 }),
+  uip: mk('uip', 'Furgón UIP', { mass: 1900, torque: 420, idle: 800, redline: 5000, gears: [3.9, 2.1, 1.35, 0.97, 0.76], final: 4.2, drive: 'F', dragK: 0.5, mu: 0.98, brake: 0.95, cgFront: 0.57, cgH: 0.72 }, [[0xf4f4f2, 1]], { livery: 'policia', engine: 'diesel', accel: 9, maxSpeed: 31 }),
   autobus: mk('autobus', 'Autobús EMT', { mass: 12500, torque: 2600, idle: 600, redline: 2400, gears: [3.4, 1.9, 1.42, 1.0, 0.75], final: 5.9, drive: 'R', dragK: 3.2, mu: 0.85, brake: 0.75, cgFront: 0.45, cgH: 1.0 }, [[0x1f62c0, 1]], { livery: 'emt', engine: 'gnc', accel: 3.5, maxSpeed: 22 }),
 };
 
 export interface DriveInput { throttle: number; steer: number; handbrake: boolean; }
 
 let nextId = 1;
+/** Segundos que arde un coche con el motor a cero antes de explotar. */
+export const FIRE_FUSE = 9;
 const _v = new THREE.Vector3();
 
 /** Efectos que el vehículo emite (los recoge main.ts para humo, marcas de frenada y sonido). */
 export interface VehicleFxSink {
   smoke(x: number, y: number, z: number, dark: number, size: number): void;
   skid(x: number, y: number, z: number, heading: number, id: number, wheel: number): void;
+  /** Pieza suelta (plástico, cristal, chapa) que sale despedida y rebota hasta `floor`. */
+  debris(x: number, y: number, z: number, vx: number, vy: number, vz: number, color: number, size: number, floor: number): void;
 }
 
 export class Vehicle {
   static fx: VehicleFxSink | null = null;
+  /** Lo llama un coche en llamas al reventar (main.ts hace la explosión: daño, sonido, policía). */
+  static onExplode: ((v: Vehicle) => void) | null = null;
   readonly id = nextId++;
   readonly mesh = new THREE.Group();
   private readonly body = new THREE.Group();
-  private readonly wheels: { pivot: THREE.Object3D; spin: THREE.Object3D; front: boolean; x: number; z: number }[] = [];
+  private readonly wheels: { pivot: THREE.Object3D; spin: THREE.Object3D; front: boolean; x: number; z: number; r: number }[] = [];
   readonly pos = new THREE.Vector3();
   heading = 0; // 0 = mirando a +Z
   readonly vel = new THREE.Vector2(); // (x, z)
@@ -129,6 +137,11 @@ export class Vehicle {
   private bodyR = 0; private bodyRv = 0;
   private smokeT = 0;
   private skidAcc = 0;
+  /** Ruedas pinchadas (mismo orden que las ruedas del modelo). */
+  readonly flat: boolean[] = [];
+  /** Segundos ardiendo (con la vida a cero): al llegar a FIRE_FUSE, explota. */
+  fireT = 0;
+  private headTris: number[] = [];
   private orig: { g: THREE.BufferGeometry; p: Float32Array }[] = [];
 
   constructor(readonly type: VehicleType, color?: number) {
@@ -161,6 +174,9 @@ export class Vehicle {
     this.driverMesh.visible = false;
     this.body.add(this.driverMesh);
     for (const g of [this.model.body, this.model.glass, this.model.lights]) this.orig.push({ g, p: (g.attributes.position.array as Float32Array).slice() });
+    // triángulos de los faros (tipo de luz 0), para saber cuántos quedan enteros
+    const lk = this.model.lights.getAttribute('lk');
+    if (lk) for (let t = 0; t < lk.count / 3; t++) if (lk.getX(t * 3) < 0.5) this.headTris.push(t);
 
     // Ruedas: el pivote gira con la dirección (solo delanteras) y el hijo rueda
     const wg = wheelGeometry(this.model.wheelStyle);
@@ -174,7 +190,8 @@ export class Vehicle {
       spin.add(wm);
       pivot.add(spin);
       this.mesh.add(pivot);
-      this.wheels.push({ pivot, spin, front: w.front, x: w.x, z: w.z });
+      this.wheels.push({ pivot, spin, front: w.front, x: w.x, z: w.z, r: w.r });
+      this.flat.push(false);
     }
     if (type.id === 'autobus') {
       // eje trasero gemelo: segunda rueda por dentro
@@ -247,6 +264,12 @@ export class Vehicle {
   }
 
   update(dt: number, input: DriveInput, world: CollisionWorld, ground?: Ground) {
+    // una rueda pinchada tira del volante hacia su lado (+x es la izquierda, volante + es a la derecha)
+    if (this.flats && this.speed > 2) {
+      let pull = 0;
+      this.flat.forEach((f, i) => { if (f) pull -= Math.sign(this.wheels[i].x) * 0.12; });
+      input = { ...input, steer: clamp(input.steer + pull, -1, 1) };
+    }
     if (this.driver === 'player') this.physics(dt, input);
     else this.arcade(dt, input);
 
@@ -291,6 +314,8 @@ export class Vehicle {
   // ------------------------------------------------------------------ modelo simplificado (IA)
   private arcade(dt: number, input: DriveInput) {
     const t = this.type;
+    // motor muerto (o ardiendo): ya no acelera
+    if ((this.health <= 0 || this.burnt) && input.throttle > 0) input = { ...input, throttle: 0 };
     const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
     const rx = -fz, rz = fx;
     let vf = this.vel.x * fx + this.vel.y * fz;
@@ -307,7 +332,7 @@ export class Vehicle {
       vf -= Math.sign(vf) * Math.min(Math.abs(vf), (1.2 + Math.abs(vf) * 0.04) * dt);
     }
     vf -= vf * Math.abs(vf) * 0.009 * dt;
-    const grip = input.handbrake ? 1.4 : t.grip;
+    const grip = input.handbrake ? 1.4 : t.grip * (this.flats ? 0.7 : 1);
     vr *= Math.exp(-grip * dt);
     if (input.handbrake) vf -= Math.sign(vf) * Math.min(Math.abs(vf), 7 * dt);
     const maxSteer = 0.58 / (1 + Math.abs(vf) / 11);
@@ -412,7 +437,8 @@ export class Vehicle {
     const alphaR = Math.atan2(latR, avf);
     const tire = (al: number, N: number, muE: number) => muE * N * Math.sin(1.45 * Math.atan(1.9 * al / 0.1));
     const hb = input.handbrake;
-    let muF = mu, muR = mu * (hb ? 0.6 : 1);
+    let muF = mu * (this.flat.some((f, i) => f && this.wheels[i].front) ? 0.6 : 1);
+    let muR = mu * (hb ? 0.6 : 1) * (this.flat.some((f, i) => f && !this.wheels[i].front) ? 0.6 : 1);
     // círculo de fricción en el eje motriz
     const useF = m.drive === 'F' ? Math.min(1, Math.abs(drive) / Math.max(1, mu * Nf)) : 0;
     const useR = m.drive === 'R' ? Math.min(1, Math.abs(drive) / Math.max(1, mu * Nr)) : 0;
@@ -471,25 +497,91 @@ export class Vehicle {
     const px = lx * k, pz = lz * k, py = 0.75;
     const R = Math.min(1.3, 0.55 + force * 0.04);
     const depth = Math.min(0.22, (force - 4) * 0.018);
-    for (const o of this.orig) {
-      const p = o.g.attributes.position as THREE.BufferAttribute;
-      const arr = p.array as Float32Array;
-      let moved = false;
-      for (let i = 0; i < arr.length; i += 3) {
-        const ddx = arr[i] - px, ddy = arr[i + 1] - py, ddz = arr[i + 2] - pz;
-        const dist = Math.sqrt(ddx * ddx + ddy * ddy * 0.5 + ddz * ddz);
-        if (dist > R) continue;
-        const f = depth * (1 - dist / R) ** 2;
-        const nx = arr[i] - lx * f, ny = arr[i + 1] - f * 0.25, nz = arr[i + 2] - lz * f;
-        // no más de 35 cm respecto a la forma original
-        const ox = o.p[i], oy = o.p[i + 1], oz = o.p[i + 2];
-        const dd = Math.hypot(nx - ox, ny - oy, nz - oz);
-        const lim = dd > 0.35 ? 0.35 / dd : 1;
-        arr[i] = ox + (nx - ox) * lim; arr[i + 1] = oy + (ny - oy) * lim; arr[i + 2] = oz + (nz - oz) * lim;
-        moved = true;
-      }
-      if (moved) { p.needsUpdate = true; if (o.g === this.model.body) o.g.computeVertexNormals(); }
+    const body = this.model.body;
+    const ob = this.orig.find((q) => q.g === body)!;
+    if (dent(body.attributes.position.array as Float32Array, ob.p, px, py, pz, lx, lz, R, depth)) {
+      body.attributes.position.needsUpdate = true;
+      body.computeVertexNormals();
     }
+    // golpe fuerte: faros y pilotos del lado del golpe, cristales cercanos y piezas sueltas
+    const lights = force > 7 ? this.breakPart(this.model.lights, px, 0.7, pz, R * 0.8) : 0;
+    const glass = force > 10 ? this.breakPart(this.model.glass, px, 1.1, pz, R * 0.75) : 0;
+    const fx = Vehicle.fx;
+    if (fx && force > 7) {
+      const n = Math.min(10, Math.round((force - 6) * 0.6) + lights + glass);
+      for (let i = 0; i < n; i++) {
+        const glassBit = i < glass;
+        const w = this.toWorld(px * 0.95, glassBit ? 1.1 : 0.4 + Math.random() * 0.4, pz * 0.95);
+        const sp = 1.5 + Math.random() * force * 0.12;
+        fx.debris(w.x, w.y, w.z, -dx * sp + (Math.random() - 0.5) * 3 + this.vel.x * 0.4, 1.5 + Math.random() * 3, -dz * sp + (Math.random() - 0.5) * 3 + this.vel.y * 0.4,
+          glassBit ? 0xbfd6e2 : i % 3 === 0 ? 0x1c1c1e : this.color, glassBit ? 0.05 : 0.08 + Math.random() * 0.1, this.pos.y);
+      }
+    }
+  }
+
+  /** Un disparo en el punto `p` (mundo) con dirección `d`: rueda pinchada, cristal roto o agujero en la chapa. */
+  bulletHit(p: THREE.Vector3, d: THREE.Vector3): 'tyre' | 'glass' | 'body' {
+    const c = Math.cos(this.heading), s = Math.sin(this.heading);
+    const rx = p.x - this.pos.x, rz = p.z - this.pos.z;
+    const lx = rx * c - rz * s, lz = rx * s + rz * c, ly = p.y - this.pos.y;
+    const dlx = d.x * c - d.z * s, dlz = d.x * s + d.z * c;
+    const fx = Vehicle.fx;
+    const wi = wheelAt(this.wheels, lx, ly, lz);
+    if (wi >= 0 && !this.flat[wi]) {
+      this.flat[wi] = true;
+      const w = this.wheels[wi];
+      // la cubierta se aplasta y esa esquina del coche baja
+      w.pivot.position.y = w.r * 0.78;
+      for (const m of w.spin.children) m.scale.set(m.scale.x, m.scale.y * 0.86, m.scale.z * 0.86);
+      if (fx) for (let i = 0; i < 4; i++) fx.smoke(p.x, p.y, p.z, 0, 0.25);
+      return 'tyre';
+    }
+    if (ly > 0.95 && this.breakPart(this.model.glass, lx, ly, lz, 0.55) > 0) {
+      if (fx) for (let i = 0; i < 6; i++) fx.debris(p.x, p.y, p.z, d.x * 2 + (Math.random() - 0.5) * 2, Math.random() * 2, d.z * 2 + (Math.random() - 0.5) * 2, 0xbfd6e2, 0.04, this.pos.y);
+      return 'glass';
+    }
+    this.breakPart(this.model.lights, lx, ly, lz, 0.22);
+    const body = this.model.body;
+    const o = this.orig.find((q) => q.g === body)!;
+    if (dent(body.attributes.position.array as Float32Array, o.p, lx, ly, lz, dlx, dlz, 0.22, 0.05)) {
+      body.attributes.position.needsUpdate = true;
+      body.computeVertexNormals();
+    }
+    return 'body';
+  }
+
+  /** Taller: chapa, cristales, faros y ruedas como nuevos. */
+  repair() {
+    if (this.burnt) return;
+    this.health = 100;
+    this.fireT = 0;
+    for (const o of this.orig) {
+      (o.g.attributes.position.array as Float32Array).set(o.p);
+      o.g.attributes.position.needsUpdate = true;
+      if (o.g === this.model.body) o.g.computeVertexNormals();
+    }
+    this.wheels.forEach((w, i) => {
+      if (!this.flat[i]) return;
+      this.flat[i] = false;
+      w.pivot.position.y = w.r;
+      for (const m of w.spin.children) m.scale.set(m.scale.x, m.scale.y / 0.86, m.scale.z / 0.86);
+    });
+  }
+
+  /** Faros enteros (0–1): con los dos rotos el coche del jugador ya no alumbra. */
+  get headOk() { return intactFraction(this.model.lights.attributes.position.array as Float32Array, this.headTris); }
+  /** Ruedas pinchadas. */
+  get flats() { return this.flat.filter(Boolean).length; }
+
+  private breakPart(g: THREE.BufferGeometry, x: number, y: number, z: number, r: number) {
+    const bits = shatter(g.attributes.position.array as Float32Array, x, y, z, r);
+    if (bits.length) g.attributes.position.needsUpdate = true;
+    return Math.min(6, bits.length);
+  }
+
+  private toWorld(x: number, y: number, z: number) {
+    const s = Math.sin(this.heading), c = Math.cos(this.heading);
+    return _v.set(this.pos.x + x * c + z * s, this.pos.y + y, this.pos.z - x * s + z * c);
   }
 
   private updateLights(dt: number) {
@@ -507,6 +599,10 @@ export class Vehicle {
   }
 
   private effects(dt: number) {
+    if (this.health <= 0 && !this.burnt) {
+      this.fireT += dt;
+      if (this.fireT > FIRE_FUSE) { this.fireT = 0; if (Vehicle.onExplode) Vehicle.onExplode(this); else this.burn(); }
+    } else this.fireT = 0;
     const fx = Vehicle.fx;
     if (!fx) return;
     const s = Math.sin(this.heading), c = Math.cos(this.heading);
@@ -514,9 +610,11 @@ export class Vehicle {
     this.smokeT -= dt;
     if (this.smokeT <= 0) {
       this.smokeT = 0.08;
-      if (this.health < 35) {
+      if (this.health < 35 && !this.burnt) {
         const p = toW(...this.model.hood);
         fx.smoke(p.x, p.y, p.z, this.health <= 0 ? 0.9 : 0.4, this.health <= 0 ? 1.6 : 0.9);
+        // motor en llamas: llamas bajo el capó y, al cabo de un rato, explota
+        if (this.health <= 0) for (let i = 0; i < 2; i++) fx.smoke(p.x + (Math.random() - 0.5) * 0.8, p.y - 0.1, p.z + (Math.random() - 0.5) * 0.8, -1, 0.5 + this.fireT * 0.05);
       }
       if (this.skid > 0.35) {
         for (const w of this.wheels) if (!w.front && Math.random() < 0.7) {

@@ -262,7 +262,7 @@ function makeSkeleton(height: number) {
 
 export type Action =
   | 'none' | 'phone' | 'smoke' | 'arms' | 'look' | 'talk' | 'wave' | 'handsUp' | 'cower' | 'sit' | 'drink'
-  | 'guitar' | 'sweep' | 'dance' | 'guard' | 'aimPistol' | 'aimRifle' | 'holdBat' | 'shout' | 'lean';
+  | 'guitar' | 'sweep' | 'dance' | 'guard' | 'aimPistol' | 'aimRifle' | 'holdBat' | 'shout' | 'lean' | 'crouch';
 export type OneShot = 'punchL' | 'punchR' | 'swing' | 'kick' | 'hit' | 'recoil' | 'recoilBig' | 'stab';
 export type Prop = 'none' | 'pistol' | 'smg' | 'shotgun' | 'bat' | 'phone' | 'cigarette' | 'beer' | 'guitar' | 'broom' | 'coffee';
 
@@ -519,6 +519,11 @@ export class Character {
         R(B.thL, -1.3); R(B.thR, -1.1); R(B.knL, 2.1); R(B.knR, 2.0); R(B.ftL, -0.6); R(B.ftR, -0.6);
         R(B.spine, 0.6); R(B.shL, -2.4, 0, -0.4); R(B.shR, -2.4, 0, 0.4); R(B.elL, -1.7); R(B.elR, -1.7);
         b[B.hips].position.y += (0.5 - b[B.hips].position.y) * w; break;
+      case 'crouch':
+        // agachado a cubierto: una rodilla casi en el suelo, el arma recogida contra el pecho
+        R(B.thL, -1.35); R(B.thR, -0.45); R(B.knL, 1.95); R(B.knR, 1.75); R(B.ftL, -0.5); R(B.ftR, 0.3);
+        R(B.spine, 0.32); R(B.neck, -0.2); R(B.shR, -0.9, 0, 0.25); R(B.elR, -1.25); R(B.shL, -0.75, 0, -0.35); R(B.elL, -1.45);
+        b[B.hips].position.y += (0.6 - b[B.hips].position.y) * w; break;
       case 'sit':
         R(B.thL, -1.5, 0, -0.08); R(B.thR, -1.5, 0, 0.08); R(B.knL, 1.45); R(B.knR, 1.45); R(B.ftL, 0.05); R(B.ftR, 0.05);
         R(B.shL, -0.35, 0, -0.1); R(B.shR, -0.35, 0, 0.1); R(B.elL, -0.9); R(B.elR, -0.9); R(B.spine, -0.08);

@@ -511,7 +511,9 @@ export interface Livery { kind: 'plain' | 'taxi' | 'emt' | 'policia'; paint: num
 
 const DARK = 0x18191b, TRIM = 0x232425, CHROME = 0xb5b9be, GRILL = 0x0e0f10, INTERIOR = 0x262626, SEAT = 0x333335, ARCH = 0x0f0f10;
 
-export function buildModel(id: string, liv: Livery): VehicleModel {
+export function buildModel(typeId: string, liv: Livery): VehicleModel {
+  // el furgón de la UIP es una furgoneta con la librea de la policía
+  const id = typeId === 'uip' ? 'furgoneta' : typeId;
   if (id === 'autobus') return buildBus(liv);
   const spec = BODIES[id === 'taxi' || id === 'policia' ? 'berlina' : id];
   const { L, W, gb, wf, wr } = spec;

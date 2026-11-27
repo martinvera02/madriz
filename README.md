@@ -27,7 +27,7 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 | Espacio | Saltar / freno de mano (derrape) |
 | F | Subir / bajar del coche (o robarlo si tiene conductor) |
 | S | Frenar y, parado, marcha atrás |
-| Q | Claxon |
+| Q | Claxon (en coche) · a pie, ponerse a cubierto / salir |
 | C | Mirar atrás (conduciendo) |
 | L | Luces: automáticas → encendidas → apagadas |
 | R | Enderezar el coche |
@@ -47,6 +47,34 @@ Parámetros de URL: `?hora=22` (0–24) para cambiar la hora de inicio (por defe
 Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar, stick derecho cámara,
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
+
+## Versión 0.18: persecuciones de verdad, coberturas y daños
+
+- **Policía de 4 y 5 estrellas**. Con 4: furgones de la **UIP** con cuatro agentes con subfusil y chaleco
+  (ráfagas cortas, más alcance, más aguante), las patrullas **embisten** y montan **controles** (dos coches
+  cruzados en la calle por la que vas, con los agentes parapetados). Con 5: el **helicóptero**, que te sigue en
+  círculos, te alumbra con el foco de noche y tiene un tirador en la puerta; se puede derribar y revienta donde cae.
+  Suena el rotor.
+- **Daño visible en los coches** (las abolladuras ya existían): los golpes fuertes rompen **faros y pilotos** del lado
+  del golpe (sin faros, tu coche ya no alumbra) y **cristales**, y sueltan **piezas** que rebotan por el suelo. Los
+  disparos agujerean la chapa, rompen lunas y **pinchan ruedas** (la esquina baja, agarra menos y el volante tira
+  hacia ese lado). Con el motor a cero el coche **arde** y a los 9 s **explota**: sal antes. El taller lo deja todo
+  como nuevo.
+- **Coberturas** (Q a pie): te pegas al muro, coche o pretil más cercano. Detrás de algo bajo vas agachado; A/D te
+  mueve a lo largo y al llegar al borde te paras; al apuntar te asomas. A cubierto y sin asomarte, la mayoría de
+  disparos que vienen del otro lado dan en la cobertura. Correr, saltar o alejarte te saca.
+- **Tres misiones nuevas** en los sitios de las últimas versiones:
+  - *Por debajo de Bailén* (Lola, Embajadores): una furgoneta con mercancía, un chivatazo y el túnel de Bailén, donde
+    la policía pierde tu pista.
+  - *Los puentes de Madrid Río* (Rafa): contrarreloj por San Isidro, Segovia y Reina Victoria; cuanto más rápido,
+    más cobras.
+  - *Vistas desde la azotea* (Paco, calle de Alcalá): una cita en la azotea del Círculo de Bellas Artes que resulta
+    ser una trampa; tres matones armados y a cubrirse entre sombrillas y jardineras.
+- **Tests**: 43 (daños, coberturas y escalado de la policía, además de los de la 0.17). Uno de ellos encontró que
+  la dirección de la cobertura salía torcida 22º y te ibas separando del muro al moverte.
+- **Límites**: el helicóptero no esquiva edificios altos (vuela a 45 m sobre el suelo, por encima de casi todo); los
+  clientes de la azotea siguen sentados durante el tiroteo; los controles se colocan en mitad de una calle por
+  delante de ti, no en un cruce elegido.
 
 ## Versión 0.17: orden en la casa
 

@@ -252,6 +252,7 @@ export class Combat {
     } else if (hitV) {
       this.hitMarker = 0.1;
       hitV.health -= dmg * 0.35;
+      hitV.bulletHit(end, d);
       hitV.lastImpact = Math.max(hitV.lastImpact, 1);
       this.hooks.smoke(end.x, end.y, end.z, 0.2, 0.2);
       this.hooks.sound('ricochet', null, end);

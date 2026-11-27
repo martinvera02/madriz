@@ -199,8 +199,14 @@ export function circulo(parts: BuildingData[], ground: Ground, collision: Collis
   const ppl = new People(g, people, k);
   const hallPoly = [k.w(X0, 0), k.w(X1, 0), k.w(X1, D), k.w(X0, D)].flat();
   const inCar = (p: THREE.Vector3) => { const [lx, lz] = k.l(p.x, p.z); return lx > EX0 && lx < EX1 && lz > EZ0 && lz < EZ1; };
+  // puntos de la azotea en coordenadas del mapa (para las misiones)
+  const [rcx, rcz] = k.w((RX0 + RX1) / 2, (RZ0 + RZ1) / 2);
+  const [rax, raz] = k.w(RX0 + 2.5, RZ0 + 3.5), [rbx, rbz] = k.w(RX1 - 2.5, RZ0 + 3.5), [rdx, rdz] = k.w(RX1 - 4, RZ1 - 4.5);
+  const [rbarx, rbarz] = k.w(RX0 + 7.5, RZ1 - 5);
+  const [rlx, rlz] = k.w((EX0 + EX1) / 2, (EZ0 + EZ1) / 2);
   return {
-    name: 'Círculo de Bellas Artes', group: g, footprint: main.pts, floor: k.y0, fill: 0.6, meta: { EX0, EX1, EZ0, EZ1, top, L },
+    name: 'Círculo de Bellas Artes', group: g, footprint: main.pts, floor: k.y0, fill: 0.6,
+    meta: { EX0, EX1, EZ0, EZ1, top, L, roofY: k.y0 + top, rcx, rcz, rax, raz, rbx, rbz, rdx, rdz, rbarx, rbarz, rlx, rlz },
     inside: (x, z, y) => inPoly(hallPoly, x, z) && ((y > k.y0 - 1 && y < k.y0 + FL) || (y > k.y0 + top - 0.5 && y < k.y0 + top + 3)),
     update: (dt, p) => {
       ppl.update(dt, Math.hypot(p.x - f.ox, p.z - f.oz) < 120);

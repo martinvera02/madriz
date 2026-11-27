@@ -5,6 +5,7 @@ import type { CollisionWorld } from '../world/collision';
 import type { Ground } from '../world/roads';
 import { Vehicle, VEHICLE_TYPES } from '../entities/vehicle';
 import { Character, randomLook } from '../entities/character';
+import { Helicopter } from '../entities/helicopter';
 
 /*
  * Nivel de búsqueda y Policía Municipal.
@@ -14,16 +15,31 @@ import { Character, randomLook } from '../entities/character';
  *    de calles con A* (pueden ir en sentido contrario), con sirena y rotativos.
  *  - Si estás a pie o te paras cerca, los agentes bajan del coche, se acercan, te dan el alto y disparan si
  *    estás armado o tienes 2+ estrellas. Si arrancas, vuelven al coche y siguen la persecución.
+ *  - 4 estrellas: furgones de la UIP con cuatro agentes con subfusil y chaleco, las patrullas embisten
+ *    y montan controles (dos coches cruzados) en la calle por la que vas.
+ *  - 5 estrellas: además, el helicóptero, con foco de noche y un tirador en la puerta.
  */
+
+/** Estrellas a partir de las que salen furgones de la UIP, controles y helicóptero. */
+export const UIP_STARS = 4, HELI_STARS = 5;
+
+/** Cuántas unidades de calle quiere la policía con `stars` estrellas (sin contar controles). */
+export function wantedUnits(stars: number) {
+  return Math.min(6, stars + (stars >= 3 ? 1 : 0));
+}
 
 const HEAT_STARS = [35, 110, 240, 430, 680];
 
 interface Officer {
   ch: Character; pos: THREE.Vector3; heading: number; health: number; alive: boolean;
   state: 'car' | 'foot' | 'return'; fireT: number; car: Unit; side: number; deadT: number;
+  /** Subfusil (UIP): ráfagas cortas y más alcance. */
+  smg: boolean; burst: number;
 }
+type UnitKind = 'patrol' | 'uip' | 'block';
 interface Unit {
   v: Vehicle; path: number[]; pathT: number; stuck: number; reverse: number; jams: number; officers: Officer[]; parked: boolean;
+  kind: UnitKind;
 }
 
 export class Police {
@@ -35,7 +51,13 @@ export class Police {
   private adj = new Map<number, number[]>();
   private nodes: number[];
   private nodeGrid = new Map<string, number[]>();
-  onShoot: ((from: THREE.Vector3, to: THREE.Vector3) => void) | null = null;
+  onShoot: ((from: THREE.Vector3, to: THREE.Vector3, heavy?: boolean) => void) | null = null;
+  /** Helicóptero derribado: revienta en `pos`. */
+  onHeliDown: ((pos: THREE.Vector3) => void) | null = null;
+  heli: Helicopter | null = null;
+  private heliFire = 2;
+  private heliAway = 0;
+  private blockT = 0;
   onSay: ((pos: THREE.Vector3, text: string) => void) | null = null;
   private sayT = 0;
 
@@ -118,7 +140,43 @@ export class Police {
     this.heat = 0; this.stars = 0;
     for (const u of this.units) this.removeUnit(u);
     this.units.length = 0;
+    if (this.heli) { this.scene.remove(this.heli.mesh); this.heli.dispose(); this.heli = null; }
   }
+
+  /** Helicóptero: llega con 5 estrellas, se va al bajar de 4 (o si te pierde un buen rato). */
+  private updateHeli(dt: number, player: THREE.Vector3, dead: boolean) {
+    const gy = this.ground.heightAt(player.x, player.z);
+    if (!this.heli && this.stars >= HELI_STARS && !dead) {
+      this.heli = new Helicopter();
+      this.heli.spawn(player, gy);
+      this.scene.add(this.heli.mesh);
+      this.heliAway = 0;
+    }
+    const h = this.heli;
+    if (!h) return;
+    const leaving = this.stars < UIP_STARS || dead;
+    this.heliAway = leaving ? this.heliAway + dt : 0;
+    // al irse, sube y se aleja; desaparece a los 15 s
+    const target = leaving ? new THREE.Vector3(h.pos.x + 200, 0, h.pos.z + 200) : player;
+    const ty = leaving ? h.pos.y - 40 : gy;
+    const landed = h.update(dt, target, h.falling ? this.ground.heightAt(h.pos.x, h.pos.z) : ty, this.night, leaving ? 90 : 45);
+    if (landed) { this.onHeliDown?.(h.pos.clone()); }
+    if ((leaving && this.heliAway > 15) || (h.crashed && h.pos.distanceTo(player) > 120)) {
+      this.scene.remove(h.mesh); h.dispose(); this.heli = null; return;
+    }
+    if (h.falling || leaving) return;
+    // el tirador de la puerta: si te ve, nadie te pierde; dispara cada ~2 s
+    const from = h.gunner(new THREE.Vector3());
+    const aim = player.clone().setY(player.y + 1.1);
+    if (h.pos.distanceTo(player) < 110 && this.hasLOS(from, aim)) {
+      this.unseen = 0;
+      this.heliFire -= dt;
+      if (this.heliFire <= 0) { this.heliFire = 1.6 + Math.random() * 1.2; this.onShoot?.(from, aim, true); }
+    }
+  }
+
+  /** Oscuridad 0–1 (para el foco del helicóptero), la pone main.ts. */
+  night = 0;
 
   vehicles() { return this.units.map((u) => u.v); }
   targets() {
@@ -136,10 +194,55 @@ export class Police {
         },
       });
     }
+    const h = this.heli;
+    if (h && !h.falling) {
+      out.push({
+        pos: h.pos.clone().setY(h.pos.y - 1.4), radius: 1.6, height: 2.8, alive: true,
+        hit: (dmg) => {
+          if (h.falling) return;
+          h.health -= dmg;
+          this.crime('copHurt', h.pos);
+          if (h.health <= 0) { h.shootDown(); this.crime('copKill', h.pos); }
+        },
+      });
+    }
     return out;
   }
 
-  private spawnUnit(player: THREE.Vector3) {
+  /** Nodos de la red a entre `d0` y `d1` m del punto (en celdas de 60 m). */
+  private nodesAround(x: number, z: number, d0: number, d1: number) {
+    const cand: number[] = [];
+    const R = Math.ceil(d1 / 60);
+    const ci = Math.floor(x / 60), cj = Math.floor(z / 60);
+    for (let i = ci - R; i <= ci + R; i++) for (let j = cj - R; j <= cj + R; j++) {
+      for (const n of this.nodeGrid.get(`${i},${j}`) ?? []) {
+        const d = Math.hypot(this.nx(n) - x, this.nz(n) - z);
+        if (d > d0 && d < d1) cand.push(n);
+      }
+    }
+    return cand;
+  }
+
+  private addOfficers(unit: Unit, n: number, smg: boolean, foot: boolean) {
+    const v = unit.v;
+    for (let k = 0; k < n; k++) {
+      const side = k % 2 ? 1 : -1;
+      const look = randomLook();
+      const ch = new Character(smg
+        ? { ...look, top: 'jacket', shirt: 0x15181e, inner: 0x2a2e36, pants: 0x15181e, hairStyle: 'cap', capColor: 0x101216, stripe: false, female: Math.random() < 0.15 }
+        : { ...look, top: 'jacket', shirt: 0x1d2a44, inner: 0xe9e6df, pants: 0x1d2a44, hairStyle: 'cap', capColor: 0x1d2a44, stripe: true, female: Math.random() < 0.3 });
+      ch.root.visible = foot;
+      this.scene.add(ch.root);
+      const o: Officer = { ch, pos: v.pos.clone(), heading: 0, health: smg ? 170 : 100, alive: true, state: foot ? 'foot' : 'car', fireT: 1 + Math.random(), car: unit, side, deadT: 0, smg, burst: 0 };
+      if (foot) {
+        // detrás del coche (lado contrario al jugador lo decide placeBlock)
+        ch.setProp(smg ? 'smg' : 'pistol');
+      }
+      unit.officers.push(o);
+    }
+  }
+
+  private spawnUnit(player: THREE.Vector3, kind: UnitKind = 'patrol') {
     // un nodo entre 110 y 220 m, fuera de la vista inmediata
     const cand: number[] = [];
     const ci = Math.floor(player.x / 60), cj = Math.floor(player.z / 60);
@@ -155,19 +258,55 @@ export class Police {
     if (nb === undefined) return;
     const x = this.nx(n), z = this.nz(n);
     if (this.world.pointBlocked(x, this.ground.heightAt(x, z) + 0.8, z)) return;
-    const v = new Vehicle(VEHICLE_TYPES.policia);
+    const v = new Vehicle(VEHICLE_TYPES[kind === 'uip' ? 'uip' : 'policia']);
     v.place(x, z, Math.atan2(this.nx(nb) - x, this.nz(nb) - z), this.ground.heightAt(x, z));
     v.driver = 'ai';
     v.siren = true;
     this.scene.add(v.mesh);
-    const unit: Unit = { v, path: [], pathT: 0, stuck: 0, reverse: 0, jams: 0, officers: [], parked: false };
-    for (const side of [-1, 1]) {
-      const ch = new Character({ ...randomLook(), top: 'jacket', shirt: 0x1d2a44, inner: 0xe9e6df, pants: 0x1d2a44, hairStyle: 'cap', capColor: 0x1d2a44, stripe: true, female: Math.random() < 0.3 });
-      ch.root.visible = false;
-      this.scene.add(ch.root);
-      unit.officers.push({ ch, pos: v.pos.clone(), heading: 0, health: 100, alive: true, state: 'car', fireT: 1 + Math.random(), car: unit, side, deadT: 0 });
-    }
+    const unit: Unit = { v, path: [], pathT: 0, stuck: 0, reverse: 0, jams: 0, officers: [], parked: false, kind };
+    this.addOfficers(unit, kind === 'uip' ? 4 : 2, kind === 'uip', false);
     this.units.push(unit);
+  }
+
+  /**
+   * Control policial: dos coches cruzados en una calle por delante del jugador (110–170 m en la dirección en
+   * que va), con los agentes ya fuera, parapetados detrás.
+   */
+  private spawnBlock(player: THREE.Vector3, car: Vehicle) {
+    const hx = Math.sin(car.heading), hz = Math.cos(car.heading);
+    let best = -1, bs = -Infinity;
+    for (const n of this.nodesAround(player.x, player.z, 110, 170)) {
+      const dx = this.nx(n) - player.x, dz = this.nz(n) - player.z, d = Math.hypot(dx, dz);
+      const dot = (dx * hx + dz * hz) / d;
+      if (dot < 0.85 || (this.adj.get(n)?.length ?? 0) > 2) continue; // en mitad de una calle, no en un cruce
+      if (dot > bs) { bs = dot; best = n; }
+    }
+    if (best < 0) return false;
+    const nb = this.adj.get(best)![0];
+    const x = this.nx(best), z = this.nz(best);
+    const ra = Math.atan2(this.nx(nb) - x, this.nz(nb) - z);
+    const px = Math.cos(ra), pz = -Math.sin(ra); // perpendicular a la calle
+    const y = this.ground.heightAt(x, z);
+    if (this.world.pointBlocked(x, y + 0.8, z)) return false;
+    // lado del control que mira hacia el jugador: los agentes se ponen al otro
+    const towards = Math.sign((player.x - x) * Math.sin(ra) + (player.z - z) * Math.cos(ra)) || 1;
+    for (const s of [-1, 1]) {
+      const v = new Vehicle(VEHICLE_TYPES.policia);
+      v.place(x + px * s * 2.3, z + pz * s * 2.3, ra + Math.PI / 2 + (s > 0 ? 0.2 : -0.2), y);
+      v.driver = 'ai';
+      v.siren = true;
+      this.scene.add(v.mesh);
+      const unit: Unit = { v, path: [], pathT: 0, stuck: 0, reverse: 0, jams: 0, officers: [], parked: true, kind: 'block' };
+      this.addOfficers(unit, 2, this.stars >= HELI_STARS, true);
+      unit.officers.forEach((o, k) => {
+        const off = (k ? 1.2 : -1.2);
+        o.pos.set(v.pos.x + px * off - Math.sin(ra) * towards * 3, y, v.pos.z + pz * off - Math.cos(ra) * towards * 3);
+        o.ch.root.position.copy(o.pos);
+      });
+      this.units.push(unit);
+    }
+    if (this.sayT <= 0) { this.onSay?.(new THREE.Vector3(x, y, z), '¡Control! ¡Para el coche!'); this.sayT = 6; }
+    return true;
   }
 
   private removeUnit(u: Unit) {
@@ -185,10 +324,19 @@ export class Police {
     this.stars = st;
     this.sayT -= dt;
 
-    // patrullas: 1 con 1 estrella, hasta 5
-    const want = dead ? 0 : Math.min(5, this.stars + (this.stars >= 3 ? 1 : 0));
-    const active = this.units.filter((u) => !u.v.burnt);
-    if (active.length < want && Math.random() < dt * 0.8) this.spawnUnit(player);
+    // patrullas: 1 con 1 estrella, hasta 6; con 4+, la mitad son furgones de la UIP
+    const want = dead ? 0 : wantedUnits(this.stars);
+    const active = this.units.filter((u) => !u.v.burnt && u.kind !== 'block');
+    if (active.length < want && Math.random() < dt * 0.8) {
+      const uips = active.filter((u) => u.kind === 'uip').length;
+      this.spawnUnit(player, this.stars >= UIP_STARS && uips < Math.ceil(want / 2) ? 'uip' : 'patrol');
+    }
+    // controles: con 4+ estrellas y huyendo en coche, uno cada ~25 s como mucho
+    this.blockT -= dt;
+    if (!dead && this.stars >= UIP_STARS && playerCar && playerCar.speed > 8 && this.blockT <= 0 && !this.units.some((u) => u.kind === 'block')) {
+      this.blockT = this.spawnBlock(player, playerCar) ? 25 : 3;
+    }
+    this.updateHeli(dt, player, dead);
 
     for (let k = this.units.length - 1; k >= 0; k--) {
       const u = this.units[k];
@@ -202,7 +350,8 @@ export class Police {
       }
       const d = v.pos.distanceTo(player);
       const anyOut = u.officers.some((o) => o.state !== 'car');
-      if (!stolen && ((this.stars === 0 && d > 160 && !anyOut) || d > 420 || (u.officers.every((o) => !o.alive) && d > 80))) {
+      const blockGone = u.kind === 'block' && (d > 300 || this.stars < UIP_STARS - 1);
+      if (!stolen && (blockGone || (this.stars === 0 && d > 160 && !anyOut) || d > 420 || (u.officers.every((o) => !o.alive) && d > 80))) {
         this.removeUnit(u); this.units.splice(k, 1); continue;
       }
       // ¿te ven?
@@ -221,7 +370,7 @@ export class Police {
             const s = Math.sin(v.heading), c = Math.cos(v.heading);
             o.pos.set(v.pos.x - c * o.side * 1.6, v.pos.y, v.pos.z + s * o.side * 1.6);
             o.ch.root.visible = true;
-            o.ch.setProp('pistol');
+            o.ch.setProp(o.smg ? 'smg' : 'pistol');
           }
           if (this.sayT <= 0) { this.onSay?.(v.pos, ['¡Policía! ¡Alto!', '¡Quieto ahí! ¡Las manos!', '¡Al suelo, ya!'][Math.floor(Math.random() * 3)]); this.sayT = 6; }
         }
@@ -239,9 +388,13 @@ export class Police {
         }
         const dp = o.pos.distanceTo(player);
         // volver al coche si te vas en uno
-        if (playerCar && playerCar.speed > 4 && dp > 22 && !v.burnt && !stolen) o.state = 'return';
+        if (playerCar && playerCar.speed > 4 && dp > 22 && !v.burnt && !stolen && u.kind !== 'block') o.state = 'return';
         let speed = 0;
         let want = Math.atan2(player.x - o.pos.x, player.z - o.pos.z);
+        if (u.kind === 'block' && this.stars > 0) {
+          // en el control no persiguen: se quedan parapetados y disparan
+          if (dp < 9) speed = 3;
+        }
         if (o.state === 'return') {
           const dc = o.pos.distanceTo(v.pos);
           want = Math.atan2(v.pos.x - o.pos.x, v.pos.z - o.pos.z);
@@ -250,16 +403,22 @@ export class Police {
           if (dc < 2.2) { o.state = 'car'; o.ch.root.visible = false; u.parked = false; }
         } else if (this.stars > 0 && !dead) {
           const los = this.hasLOS(o.pos.clone().setY(o.pos.y + 1.5), player.clone().setY(player.y + 1.2));
-          if (dp > 13 || !los) speed = dp > 30 ? 5.5 : 4;
-          o.ch.setAction(dp < 30 && los ? 'aimPistol' : 'none');
+          if (u.kind !== 'block' && (dp > 13 || !los)) speed = dp > 30 ? 5.5 : 4;
+          const range = o.smg ? 42 : 32;
+          o.ch.setAction(dp < range && los ? (o.smg ? 'aimRifle' : 'aimPistol') : 'none');
           o.ch.aimPitch = 0;
           // disparan si vas armado, si tienes 2+ estrellas o si estás en un coche intentando huir
-          if (los && dp < 32 && (armed || this.stars >= 2 || playerCar)) {
+          if (los && dp < range && (armed || this.stars >= 2 || playerCar)) {
             o.fireT -= dt;
             if (o.fireT <= 0) {
-              o.fireT = 0.75 + Math.random() * 0.7;
+              // subfusil: ráfagas de 3–4 disparos; pistola: tiro a tiro
+              if (o.smg) {
+                if (o.burst <= 0) o.burst = 3 + Math.floor(Math.random() * 2);
+                o.burst--;
+                o.fireT = o.burst > 0 ? 0.11 : 0.9 + Math.random() * 0.6;
+              } else o.fireT = 0.75 + Math.random() * 0.7;
               o.ch.play('recoil');
-              this.onShoot?.(o.ch.muzzle(new THREE.Vector3()), player.clone().setY(player.y + 1.1));
+              this.onShoot?.(o.ch.muzzle(new THREE.Vector3()), player.clone().setY(player.y + 1.1), o.smg);
             }
           }
         } else {
@@ -346,6 +505,12 @@ export class Police {
     else if (Math.abs(ang) > 1.2 && vf > 5) throttle = -0.4;
     else if (Math.abs(ang) > 0.35) throttle = 0.6;
     if (playerCar && d < 12 && playerCar.speed < 2) throttle = -1;
+    // con 4+ estrellas embisten: de cerca van a por el coche, sin frenar
+    if (this.stars >= UIP_STARS && playerCar && playerCar.speed > 4 && d < 28) {
+      const ra = angleDiff(Math.atan2(player.x - v.pos.x, player.z - v.pos.z), v.heading);
+      steer = clamp(-ra * 2.6, -1, 1);
+      throttle = 1;
+    }
     if (!playerCar && d < 14) throttle = vf > 1 ? -1 : 0;
     // atascado: marcha atrás girando; tras varios intentos, recolocar fuera de vista
     if (u.reverse > 0) { u.reverse -= dt; throttle = -1; steer = -steer; }

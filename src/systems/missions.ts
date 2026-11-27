@@ -9,6 +9,7 @@ import type { Hud } from '../ui/hud';
 import type { Police } from './police';
 import type { Target } from './combat';
 import type { MapIcon } from '../ui/mapIcons';
+import type { Landmark } from '../world/landmarks';
 
 /**
  * Misiones: marcadores de inicio repartidos por la ciudad, un encargo activo cada vez,
@@ -35,6 +36,12 @@ export interface MissionCtx {
   exitVehicle(): void;
   /** Asustar a los peatones de alrededor. */
   alarm(pos: THREE.Vector3, r: number): void;
+  /** ¿Se ve b desde a? */
+  los(a: THREE.Vector3, b: THREE.Vector3): boolean;
+  /** Un tirador de misión dispara al jugador desde `from` (con coberturas y coche como la policía). */
+  shootAtPlayer(from: THREE.Vector3, heavy?: boolean): void;
+  /** Edificio con interior por su nombre (p. ej. la azotea del Círculo). */
+  landmark(name: string): Landmark | null;
 }
 
 type Step = 'ok' | { fail: string } | null;
@@ -344,6 +351,249 @@ function cocheCaliente(ctx: MissionCtx): MissionRun {
   return run;
 }
 
+
+// ------------------------------------------------------------------ matones armados (azotea)
+
+/** Tirador de misión: se queda en su sitio, se asoma, apunta y dispara si te ve; esquiva de lado. */
+class Gunman {
+  readonly ch: Character;
+  readonly pos = new THREE.Vector3();
+  heading = 0;
+  health = 100;
+  alive = true;
+  private fireT = 1.5 + Math.random() * 1.5;
+  private strafe = 0;
+  private strafeT = 0;
+  private deadT = 0;
+  constructor(look: Look, private ctx: MissionCtx, x: number, y: number, z: number, private home = new THREE.Vector3(x, y, z)) {
+    this.ch = new Character(look);
+    this.pos.set(x, y, z);
+    this.ch.setProp('pistol');
+    ctx.scene.add(this.ch.root);
+  }
+  target(): Target {
+    return {
+      pos: this.pos, radius: 0.3, height: 1.75, alive: this.alive,
+      hit: (dmg, dx, dz) => {
+        if (!this.alive) return;
+        this.health -= dmg;
+        this.ch.play('hit');
+        this.pos.x += dx * 0.2; this.pos.z += dz * 0.2;
+        if (this.health <= 0) { this.alive = false; this.ch.setAction('none'); this.ch.setProp('none'); }
+      },
+    };
+  }
+  update(dt: number, me: THREE.Vector3, active: boolean) {
+    if (!this.alive) { this.deadT += dt; this.ch.setDown(Math.min(1, this.deadT * 3)); this.ch.animate(dt, 0); this.sync(); return; }
+    const d = this.pos.distanceTo(me);
+    const eye = this.pos.clone().setY(this.pos.y + 1.5), aim = me.clone().setY(me.y + 1.1);
+    const sees = active && d < 40 && this.ctx.los(eye, aim);
+    this.heading = Math.atan2(me.x - this.pos.x, me.z - this.pos.z);
+    this.ch.setAction(sees ? 'aimPistol' : 'none');
+    if (sees) {
+      this.fireT -= dt;
+      if (this.fireT <= 0) {
+        this.fireT = 0.9 + Math.random() * 0.9;
+        this.ch.play('recoil');
+        this.ctx.shootAtPlayer(this.ch.muzzle(new THREE.Vector3()), false);
+      }
+    }
+    // pasitos de lado para no quedarse quieto, sin alejarse de su sitio
+    this.strafeT -= dt;
+    if (this.strafeT <= 0) { this.strafeT = 1.2 + Math.random() * 1.6; this.strafe = active ? (Math.random() < 0.5 ? -1 : 1) * (Math.random() < 0.6 ? 1.6 : 0) : 0; }
+    const sx = Math.cos(this.heading) * this.strafe * dt, sz = -Math.sin(this.heading) * this.strafe * dt;
+    const nx = this.pos.x + sx, nz = this.pos.z + sz;
+    if (Math.hypot(nx - this.home.x, nz - this.home.z) < 2.5 && !this.ctx.world.pointBlocked(nx, this.pos.y + 0.9, nz)) { this.pos.x = nx; this.pos.z = nz; }
+    this.ch.animate(dt, Math.abs(this.strafe) > 0 ? 1.2 : 0);
+    this.sync();
+  }
+  private sync() { this.ch.root.position.copy(this.pos); this.ch.root.rotation.y = this.heading; }
+  dispose() { this.ctx.scene.remove(this.ch.root); this.ch.dispose(); }
+}
+
+// ------------------------------------------------------------------ misión 4: por debajo de Bailén
+
+/** Punto del túnel de Bailén bajo la calle (entre la plaza de España y el Palacio). */
+const TUNEL_AT: [number, number] = [-806, -380];
+
+function tunel(ctx: MissionCtx): MissionRun {
+  const p0 = ctx.snapCar(-640, -760);
+  const van = ctx.parkCar('furgoneta', 0xf5f5f3, p0.x, p0.z);
+  const drop = ctx.snapCar(-1480, -235);
+  const terrain = (x: number, z: number) => ctx.ground.terrain.heightAt(x, z);
+  const tY = terrain(TUNEL_AT[0], TUNEL_AT[1]);
+  const tunnelPt = new THREE.Vector3(TUNEL_AT[0], ctx.ground.heightAt(TUNEL_AT[0], TUNEL_AT[1], tY - 7), TUNEL_AT[1]);
+  const underground = (p: THREE.Vector3) => p.y < terrain(p.x, p.z) - 3;
+  let phase = 0;
+  const run: MissionRun = {
+    objective: 'Coge la furgoneta blanca aparcada junto a la plaza de España', target: van.pos, timer: null,
+    update(dt) {
+      const p = ctx.player;
+      if (van.burnt) return { fail: 'La furgoneta ha reventado con la mercancía dentro' };
+      if (phase === 0) {
+        if (p.vehicle === van) {
+          phase = 1;
+          ctx.police.heat = Math.max(ctx.police.heat, 250);
+          ctx.hud.say('Lola (al móvil)', '¡Un chivatazo! Métete en el túnel de Bailén, ahí abajo no te siguen.', van.pos, true, 4.5);
+        }
+        return null;
+      }
+      if (p.vehicle !== van) {
+        run.target = van.pos;
+        run.objective = 'Vuelve a la furgoneta';
+        if (p.pos.distanceTo(van.pos) > 80) return { fail: 'Has abandonado la furgoneta' };
+        return null;
+      }
+      // dentro del túnel la policía pierde la pista
+      if (underground(van.pos)) ctx.police.heat = Math.max(0, ctx.police.heat - dt * 30);
+      if (phase === 1) {
+        run.target = tunnelPt;
+        run.objective = 'Métete en el túnel de Bailén (baja por la rampa de la plaza de España)';
+        if (underground(van.pos) && Math.hypot(van.pos.x - tunnelPt.x, van.pos.z - tunnelPt.z) < 30) {
+          phase = 2;
+          ctx.hud.toast('Ahí abajo no te ven: aprovecha');
+        }
+        return null;
+      }
+      const hot = ctx.police.stars > 0;
+      run.target = drop;
+      run.objective = hot ? 'Pierde a la policía y lleva la furgoneta a Madrid Río, junto al Puente del Rey' : 'Lleva la furgoneta a Madrid Río, junto al Puente del Rey';
+      if (near(van.pos, drop, 9) && van.speed < 3) {
+        if (hot) { run.objective = 'Con la policía detrás no se descarga: piérdela'; return null; }
+        ctx.hud.say('Contacto de Lola', 'Justo a tiempo. Ni un rasguño… bueno, casi.', van.pos, false, 4);
+        return 'ok';
+      }
+      return null;
+    },
+    reward: () => 700,
+    targets: () => [],
+    owns: (v) => v === van,
+    cleanup(success) {
+      if (success) {
+        if (ctx.player.vehicle === van) ctx.exitVehicle();
+        ctx.removeCar(van);
+      } else if (ctx.player.vehicle !== van) ctx.removeCar(van);
+    },
+  };
+  return run;
+}
+
+// ------------------------------------------------------------------ misión 5: los puentes de Madrid Río
+
+/** Contrarreloj por los puentes con calzada, de sur a norte, cambiando de orilla. */
+const PUENTES: { at: [number, number]; name: string }[] = [
+  { at: [-1631, 1440], name: 'Puente de San Isidro' },
+  { at: [-1635, 296], name: 'Puente de Segovia' },
+  { at: [-1959, -894], name: 'Puente de la Reina Victoria' },
+];
+
+function puentes(ctx: MissionCtx): MissionRun {
+  const pts = PUENTES.map((b) => ({ ...b, p: ctx.snapCar(b.at[0], b.at[1]) }));
+  let i = -1;
+  let time = 0;
+  const run: MissionRun = {
+    objective: 'Súbete a un coche', target: null, timer: null,
+    update(dt) {
+      const v = ctx.player.vehicle;
+      if (i < 0) {
+        if (v) { i = 0; run.timer = 75; ctx.hud.toast('¡Al Puente de San Isidro!'); }
+        return null;
+      }
+      if (!v) return { fail: 'La carrera se hace en coche' };
+      if (v.health <= 0) return { fail: 'Has reventado el coche' };
+      run.timer! -= dt;
+      time += dt;
+      if (run.timer! <= 0) return { fail: 'Se ha acabado el tiempo' };
+      const cp = pts[i];
+      run.target = cp.p;
+      run.objective = `Cruza el ${cp.name} (${i + 1}/${pts.length})`;
+      if (near(v.pos, cp.p, 12)) {
+        i++;
+        if (i >= pts.length) {
+          ctx.hud.say('Rafa (al móvil)', `¡${Math.round(time)} segundos! Eso es conducir.`, v.pos, false, 4);
+          return 'ok';
+        }
+        // cada puente da tiempo para el siguiente tramo
+        run.timer! += i === 1 ? 95 : 85;
+        ctx.hud.toast(`${cp.name} ✓ · ahora el ${pts[i].name}`);
+      }
+      return null;
+    },
+    // 400 € y hasta 300 más cuanto más rápido (unos 3 minutos es buen tiempo)
+    reward: () => 400 + Math.round(Math.max(0, Math.min(300, (260 - time) * 3))),
+    targets: () => [],
+    owns: () => false,
+    cleanup() {},
+  };
+  return run;
+}
+
+// ------------------------------------------------------------------ misión 6: vistas desde la azotea
+
+function azotea(ctx: MissionCtx): MissionRun {
+  const lm = ctx.landmark('Círculo de Bellas Artes');
+  const m = lm?.meta;
+  const gunmen: Gunman[] = [];
+  let phase = 0;
+  if (!m) {
+    // sin el Círculo (otra zona del mapa) la misión no tiene sentido
+    return { objective: '', target: null, timer: null, update: () => ({ fail: 'El Círculo de Bellas Artes no está en este mapa' }), reward: () => 0, targets: () => [], owns: () => false, cleanup() {} };
+  }
+  const roofY = m.roofY;
+  const roof = new THREE.Vector3(m.rcx, roofY, m.rcz);
+  const lift = new THREE.Vector3(m.rlx, ctx.ground.heightAt(m.rlx, m.rlz, lm!.floor + 0.5), m.rlz);
+  const bar = new THREE.Vector3(m.rbarx, roofY, m.rbarz);
+  const onRoof = (p: THREE.Vector3) => p.y > roofY - 1.5 && Math.hypot(p.x - roof.x, p.z - roof.z) < 30;
+  const look = (shirt: number): Look => ({ ...randomLook(), shirt, top: 'jacket', inner: 0x111111, pants: 0x1a1a1a, hairStyle: 'short', female: false });
+  const run: MissionRun = {
+    objective: 'Ve al Círculo de Bellas Artes y sube a la azotea (ascensores del vestíbulo)', target: lift, timer: null,
+    update(dt) {
+      const p = ctx.player;
+      const me = p.vehicle ? p.vehicle.pos : p.pos;
+      for (const g of gunmen) g.update(dt, me, phase === 1);
+      if (phase === 0) {
+        run.target = me.y > roofY - 4 ? roof : lift;
+        if (onRoof(me)) {
+          phase = 1;
+          for (const [x, z, c] of [[m.rax, m.raz, 0x3a2a2a], [m.rbx, m.rbz, 0x2a2f3a], [m.rdx, m.rdz, 0x30302a]] as [number, number, number][]) gunmen.push(new Gunman(look(c), ctx, x, roofY, z));
+          ctx.hud.say('El Tuerto', '¿Paco te manda a ti? Qué pena. ¡A por él!', gunmen[0].pos, true, 3.5);
+          ctx.hud.toast('¡Es una trampa! Q para cubrirte');
+          ctx.alarm(roof, 30);
+        }
+        return null;
+      }
+      if (phase === 1) {
+        const left = gunmen.filter((g) => g.alive).length;
+        run.target = gunmen.find((g) => g.alive)?.pos ?? null;
+        run.objective = `Acaba con los matones del Tuerto (quedan ${left}) · Q para cubrirte`;
+        if (left === 0) { phase = 2; ctx.police.heat = Math.max(ctx.police.heat, 120); ctx.hud.toast('Coge el sobre de la barra'); }
+        return null;
+      }
+      if (phase === 2) {
+        run.target = bar;
+        run.objective = 'Coge el sobre que dejaron en la barra de la azotea';
+        if (!p.vehicle && p.pos.distanceTo(bar) < 2.5) { phase = 3; ctx.hud.toast('Sobre recogido · ahora, a desaparecer'); }
+        return null;
+      }
+      run.target = null;
+      run.objective = ctx.police.stars > 0 ? 'Baja del Círculo y pierde a la policía' : 'Baja a la calle';
+      if (ctx.police.stars === 0 && me.y < roofY - 6) {
+        ctx.hud.say('Paco (al móvil)', 'El Tuerto, ¿eh? Me lo apunto. Buen trabajo, chaval.', me, false, 4);
+        return 'ok';
+      }
+      return null;
+    },
+    reward: () => 600,
+    targets: () => gunmen.map((g) => g.target()),
+    owns: () => false,
+    cleanup() {
+      const gs = gunmen.splice(0);
+      setTimeout(() => gs.forEach((g) => g.dispose()), 10000);
+    },
+  };
+  return run;
+}
+
 const MISSIONS: MissionDef[] = [
   {
     id: 'recado', title: 'El primer recado', giver: 'Paco', place: 'Puerta del Sol',
@@ -365,6 +615,27 @@ const MISSIONS: MissionDef[] = [
     at: [198, 862], requires: 'cobro',
     intro: ['Paco dice que conduces bien. Ya veremos.', 'En la plaza de España hay un deportivo rojo que me han encargado.', 'Tráemelo al taller de Embajadores. Cuanto más entero, más cobras.'],
     make: cocheCaliente,
+  },
+  {
+    id: 'tunel', title: 'Por debajo de Bailén', giver: 'Lola', place: 'Embajadores',
+    giverLook: { skin: 0xb98463, shirt: 0x7a2b2b, top: 'jacket', inner: 0x171a20, pants: 0x1d2a44, hair: 0x2a1a12, hairStyle: 'long', female: true },
+    at: [52, 1168], requires: 'coche',
+    intro: ['El deportivo, de lujo. Tengo algo más gordo.', 'Una furgoneta con mercancía junto a la plaza de España.', 'Llévala a Madrid Río. Y si se complica, el túnel de Bailén es tu amigo.'],
+    make: tunel,
+  },
+  {
+    id: 'puentes', title: 'Los puentes de Madrid Río', giver: 'Rafa', place: 'Madrid Río',
+    giverLook: { skin: 0xe0ac85, shirt: 0xd8b02a, top: 'hoodie', pants: 0x2b3a55, hair: 0x3a2a1a, hairStyle: 'short', female: false },
+    at: [-1560, 1380], requires: 'coche',
+    intro: ['¿Tú eres el que conduce para Lola?', 'Apuesto 400 pavos a que no cruzas San Isidro, Segovia y Reina Victoria a tiempo.', 'Cuanto más rápido, más te llevas. ¡Ya!'],
+    make: puentes,
+  },
+  {
+    id: 'azotea', title: 'Vistas desde la azotea', giver: 'Paco', place: 'Calle de Alcalá',
+    giverLook: { skin: 0xd9a77f, shirt: 0x3a3f46, top: 'jacket', inner: 0xe9e6df, pants: 0x2b2b30, hair: 0x9a9a9a, hairStyle: 'short' },
+    at: [560, -205], requires: 'tunel',
+    intro: ['El Tuerto quiere hablar de negocios.', 'Te espera en la azotea del Círculo de Bellas Artes.', 'Sube por los ascensores. Y ojo, que el Tuerto no es de fiar.'],
+    make: azotea,
   },
 ];
 

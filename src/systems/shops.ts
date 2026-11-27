@@ -81,9 +81,9 @@ export class Shops {
       return {
         text: `Taller: reparar y cambiar matrícula (${price} €)`,
         run: () => {
-          if (v.health >= 99 && this.ctx.police.stars === 0) { this.ctx.hud.say('Mecánico', 'Este coche está nuevo, chaval.', v.pos); return; }
+          if (v.health >= 99 && !v.flats && v.headOk === 1 && this.ctx.police.stars === 0) { this.ctx.hud.say('Mecánico', 'Este coche está nuevo, chaval.', v.pos); return; }
           if (!this.money.pay(price)) { this.ctx.hud.say('Mecánico', 'Sin pasta no hay chapa.', v.pos); return; }
-          v.health = 100;
+          v.repair();
           this.ctx.police.clear();
           this.ctx.hud.toast('Coche reparado y matrícula nueva');
           this.ctx.hud.say('Mecánico', 'Como nuevo. Y aquí no has estado.', v.pos);

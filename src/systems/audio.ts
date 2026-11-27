@@ -137,6 +137,30 @@ export class CityAudio {
     this.set(v.g.gain, pos ? 0.09 : 0, 0.3);
   }
 
+  // ---- helicóptero: ruido grave troceado por las palas ("chop-chop"), posicional
+  private rotorV: { g: GainNode; p: PannerNode } | null = null;
+  rotor(pos: THREE.Vector3 | null) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    if (!this.rotorV) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.brown; src.loop = true;
+      const lp = this.lp(420);
+      const am = ctx.createGain(); am.gain.value = 0.35;
+      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 11.5;
+      const lg = ctx.createGain(); lg.gain.value = 0.65;
+      lfo.connect(lg).connect(am.gain);
+      const g = ctx.createGain(); g.gain.value = 0;
+      const p = this.panner(0, 0, 0, 25);
+      src.connect(lp).connect(am).connect(g).connect(p);
+      src.start(); lfo.start();
+      this.rotorV = { g, p };
+    }
+    const v = this.rotorV;
+    if (pos) { v.p.positionX.value = pos.x; v.p.positionY.value = pos.y; v.p.positionZ.value = pos.z; }
+    this.set(v.g.gain, pos ? 0.9 : 0, 0.6);
+  }
+
   /** Sonidos de armas y peleas. */
   weapon(kind: 'shot' | 'melee' | 'swish' | 'reload' | 'empty' | 'explosion' | 'ricochet', weapon: string | null, pos: THREE.Vector3) {
     if (!this.ctx) return;
