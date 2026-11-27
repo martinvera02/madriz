@@ -1,6 +1,7 @@
 import { FootprintIndex } from './spatial';
 import { pavingTextures, TEX_SIZE } from './paving';
 import * as THREE from 'three';
+import { F32 } from './f32';
 import type { WorldData, RoadData } from './realData';
 import { Terrain } from './terrain';
 import { CollisionWorld } from './collision';
@@ -255,10 +256,11 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
     }
   }
 
-  const roadPos: number[] = [], roadUv: number[] = [];
-  const pavePos: number[] = []; // aceras/pasarelas sobre puentes
-  const curbPos: number[] = []; // bordillos de granito
-  const walkPos: number[] = []; // aceras elevadas de baldosa
+  // acumuladores en Float32Array (ver f32.ts): con el mapa grande, los number[] se comían gigas al cargar
+  const roadPos = new F32(1 << 16), roadUv = new F32(1 << 16);
+  const pavePos = new F32(); // aceras/pasarelas sobre puentes
+  const curbPos = new F32(1 << 16); // bordillos de granito
+  const walkPos = new F32(1 << 16); // aceras elevadas de baldosa
   // Huellas de edificios y de zonas blandas (parques, plazas, agua) para medir el ancho de las aceras
   const foot = new FootprintIndex();
   data.buildings.forEach((b, i) => { if (!b.mh || b.mh < 2) foot.add(b.pts, 1, i); });
@@ -268,12 +270,12 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
   const roadIndex = new Map<RoadData, number>();
   data.roads.forEach((r, i) => roadIndex.set(r, i));
   const pillars: number[][] = []; // para no duplicar pilares entre vías paralelas del mismo puente
-  const markPos: number[] = [];
-  const bridgePos: number[] = [];
+  const markPos = new F32(1 << 16);
+  const bridgePos = new F32();
 
   const surface = (x: number, z: number, onBridge: boolean) => (onBridge ? ground.heightAt(x, z) : terrain.heightAt(x, z));
 
-  const quad = (arr: number[], a: number[], b: number[], c: number[], d: number[]) => {
+  const quad = (arr: F32, a: number[], b: number[], c: number[], d: number[]) => {
     // a-b-c-d en sentido antihorario visto desde arriba
     arr.push(...a, ...b, ...c, ...a, ...c, ...d);
   };
@@ -470,8 +472,8 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
   }
 
   const roadGeo = new THREE.BufferGeometry();
-  roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(roadPos, 3));
-  roadGeo.setAttribute('uv', new THREE.Float32BufferAttribute(roadUv, 2));
+  roadGeo.setAttribute('position', new THREE.BufferAttribute(roadPos.toArray(), 3));
+  roadGeo.setAttribute('uv', new THREE.BufferAttribute(roadUv.toArray(), 2));
   roadGeo.computeVertexNormals();
   const roadMesh = new THREE.Mesh(roadGeo, new THREE.MeshStandardMaterial({
     map: asphaltTexture(), color: 0x9da2a8, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
@@ -482,7 +484,7 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
 
   if (curbPos.length) {
     const cg = new THREE.BufferGeometry();
-    cg.setAttribute('position', new THREE.Float32BufferAttribute(curbPos, 3));
+    cg.setAttribute('position', new THREE.BufferAttribute(curbPos.toArray(), 3));
     cg.computeVertexNormals();
     const cm = new THREE.Mesh(cg, new THREE.MeshStandardMaterial({ color: 0xa49e94, roughness: 0.85, side: THREE.DoubleSide }));
     cm.receiveShadow = true;
@@ -491,10 +493,11 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
   }
   if (walkPos.length) {
     const wg = new THREE.BufferGeometry();
-    wg.setAttribute('position', new THREE.Float32BufferAttribute(walkPos, 3));
-    const uv: number[] = [];
-    for (let i = 0; i < walkPos.length; i += 3) uv.push(walkPos[i] / TEX_SIZE.baldosa, walkPos[i + 2] / TEX_SIZE.baldosa);
-    wg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    wg.setAttribute('position', new THREE.BufferAttribute(walkPos.toArray(), 3));
+    const wp = wg.getAttribute('position').array as Float32Array;
+    const uv = new Float32Array((wp.length / 3) * 2);
+    for (let i = 0, j = 0; i < wp.length; i += 3, j += 2) { uv[j] = wp[i] / TEX_SIZE.baldosa; uv[j + 1] = wp[i + 2] / TEX_SIZE.baldosa; }
+    wg.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
     wg.computeVertexNormals();
     const tex = pavingTextures().baldosa;
     const wm = new THREE.Mesh(wg, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide }));
@@ -504,7 +507,7 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
   }
   if (pavePos.length) {
     const pg = new THREE.BufferGeometry();
-    pg.setAttribute('position', new THREE.Float32BufferAttribute(pavePos, 3));
+    pg.setAttribute('position', new THREE.BufferAttribute(pavePos.toArray(), 3));
     pg.computeVertexNormals();
     const pm = new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ color: 0xa8a196, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     pm.receiveShadow = true;
@@ -512,7 +515,7 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
   }
 
   const markGeo = new THREE.BufferGeometry();
-  markGeo.setAttribute('position', new THREE.Float32BufferAttribute(markPos, 3));
+  markGeo.setAttribute('position', new THREE.BufferAttribute(markPos.toArray(), 3));
   markGeo.computeVertexNormals();
   const marks = new THREE.Mesh(markGeo, new THREE.MeshStandardMaterial({
     color: 0xe8e6de, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
@@ -522,7 +525,7 @@ export function buildRoads(data: WorldData, ground: Ground, collision: Collision
 
   if (bridgePos.length) {
     const bg = new THREE.BufferGeometry();
-    bg.setAttribute('position', new THREE.Float32BufferAttribute(bridgePos, 3));
+    bg.setAttribute('position', new THREE.BufferAttribute(bridgePos.toArray(), 3));
     bg.computeVertexNormals();
     const bm = new THREE.Mesh(bg, new THREE.MeshStandardMaterial({ color: 0xbdb5a5, roughness: 0.85, side: THREE.DoubleSide }));
     bm.castShadow = true;
@@ -548,7 +551,7 @@ export function densify(r: RoadData, N: number[], step: number): number[][] {
   return out;
 }
 
-function stripe(arr: number[], ax: number, az: number, bx: number, bz: number, w: number, h: (x: number, z: number) => number) {
+function stripe(arr: F32, ax: number, az: number, bx: number, bz: number, w: number, h: (x: number, z: number) => number) {
   const dx = bx - ax, dz = bz - az, l = Math.hypot(dx, dz) || 1;
   const nx = (-dz / l) * (w / 2), nz = (dx / l) * (w / 2);
   const p = [
@@ -559,13 +562,13 @@ function stripe(arr: number[], ax: number, az: number, bx: number, bz: number, w
   else arr.push(...p[0], ...p[2], ...p[1], ...p[0], ...p[3], ...p[2]);
 }
 
-function wallStrip(arr: number[], a: number[], b: number[], up: number, down: number) {
+function wallStrip(arr: F32, a: number[], b: number[], up: number, down: number) {
   const a0 = [a[0], a[1] + down, a[2]], b0 = [b[0], b[1] + down, b[2]];
   const a1 = [a[0], a[1] + up, a[2]], b1 = [b[0], b[1] + up, b[2]];
   arr.push(...a0, ...b0, ...b1, ...a0, ...b1, ...a1);
 }
 
-function pillar(arr: number[], x: number, z: number, y0: number, y1: number, r: number) {
+function pillar(arr: F32, x: number, z: number, y0: number, y1: number, r: number) {
   const c = [[x - r, z - r], [x + r, z - r], [x + r, z + r], [x - r, z + r]];
   for (let i = 0; i < 4; i++) {
     const [ax, az] = c[i], [bx, bz] = c[(i + 1) % 4];

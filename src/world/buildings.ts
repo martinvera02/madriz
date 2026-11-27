@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { F32 } from './f32';
 import type { BuildingData, WorldData } from './realData';
 import { Terrain } from './terrain';
 import { CollisionWorld } from './collision';
@@ -58,25 +59,25 @@ function parseColor(c?: string): number | null {
 }
 
 class GeoBuilder {
-  pos: number[] = [];
-  nor: number[] = [];
-  uv: number[] = [];
-  col: number[] = [];
-  info: number[] = [];
+  pos = new F32(4096);
+  nor = new F32(4096);
+  uv = new F32(4096);
+  col = new F32(4096);
+  info = new F32(4096);
   vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, u: number, v: number, c: THREE.Color, info: [number, number, number]) {
-    this.pos.push(x, y, z);
-    this.nor.push(nx, ny, nz);
-    this.uv.push(u, v);
-    this.col.push(c.r, c.g, c.b);
-    this.info.push(info[0], info[1], info[2]);
+    this.pos.push3(x, y, z);
+    this.nor.push3(nx, ny, nz);
+    this.uv.push2(u, v);
+    this.col.push3(c.r, c.g, c.b);
+    this.info.push3(info[0], info[1], info[2]);
   }
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
-    g.setAttribute('aInfo', new THREE.Float32BufferAttribute(this.info, 3));
+    g.setAttribute('position', new THREE.BufferAttribute(this.pos.toArray(), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(this.nor.toArray(), 3));
+    g.setAttribute('uv', new THREE.BufferAttribute(this.uv.toArray(), 2));
+    g.setAttribute('color', new THREE.BufferAttribute(this.col.toArray(), 3));
+    g.setAttribute('aInfo', new THREE.BufferAttribute(this.info.toArray(), 3));
     g.computeBoundingSphere();
     return g;
   }
@@ -112,7 +113,7 @@ export function buildBuildings(
   const group = new THREE.Group();
   const material = createBuildingMaterial();
   const chunks = new Map<string, GeoBuilder>();
-  const trims = new Map<string, { pos: number[]; nor: number[]; col: number[] }>();
+  const trims = new Map<string, { pos: F32; nor: F32; col: F32 }>();
   const placed: PlacedBuilding[] = [];
   const specials: SpecialStructure[] = [];
   const facades: FacadeRun[] = [];
@@ -208,13 +209,13 @@ export function buildBuildings(
     let gb = chunks.get(key);
     if (!gb) chunks.set(key, (gb = new GeoBuilder()));
     let tr = trims.get(key);
-    if (!tr) trims.set(key, (tr = { pos: [], nor: [], col: [] }));
+    if (!tr) trims.set(key, (tr = { pos: new F32(), nor: new F32(), col: new F32() }));
     const T = tr;
     const quad = (pts: number[][], nx: number, ny: number, nz: number, c: THREE.Color) => {
       for (const k of [0, 1, 2, 0, 2, 3]) {
-        T.pos.push(pts[k][0], pts[k][1], pts[k][2]);
-        T.nor.push(nx, ny, nz);
-        T.col.push(c.r, c.g, c.b);
+        T.pos.push3(pts[k][0], pts[k][1], pts[k][2]);
+        T.nor.push3(nx, ny, nz);
+        T.col.push3(c.r, c.g, c.b);
       }
     };
 
@@ -323,9 +324,9 @@ export function buildBuildings(
   for (const t of trims.values()) {
     if (!t.pos.length) continue;
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(t.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(t.nor, 3));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(t.col, 3));
+    g.setAttribute('position', new THREE.BufferAttribute(t.pos.toArray(), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(t.nor.toArray(), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(t.col.toArray(), 3));
     g.computeBoundingSphere();
     const mesh = new THREE.Mesh(g, trimMat);
     mesh.castShadow = true;

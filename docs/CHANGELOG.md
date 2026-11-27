@@ -13,8 +13,13 @@ De la más reciente a la más antigua. El README principal resume el proyecto; a
   más el norte); el juego cierra con muros las esquinas vacías del envoltorio (`world/zoneShape.ts`, con tests).
 - **Menos memoria en el suelo**: no se pintan texturas fuera de la zona y los lienzos de cada trozo se vacían al
   subirse a la tarjeta gráfica.
-- **Coste**: la carga tarda el doble (en el entorno de pruebas, de 19 a 35 s) y la memoria del navegador pasa de unos
-  0,7 a 1,6 GB. El siguiente paso es cargar la ciudad por zonas para que no crezca con cada barrio nuevo.
+- **Memoria al cargar**: con el mapa grande, la primera prueba en un navegador real rozó el límite de 4,4 GB por
+  pestaña. Las geometrías de edificios y calles se acumulaban en arrays normales de JavaScript (unos 16 bytes por
+  número); ahora usan `Float32Array` que crecen solos (`world/f32.ts`, 4 bytes por número), y el troceado en celdas
+  renumera con arrays tipados y suelta cada malla original en cuanto la trocea. El pico de memoria baja de 2,85 a
+  unos 2 GB y la memoria final queda en 1,5 GB (antes, 0,7 GB con el centro solo).
+- **Coste**: la carga tarda casi el doble (en el entorno de pruebas, de 19 a 33 s). El siguiente paso es cargar la
+  ciudad por zonas para que la memoria no crezca con cada barrio nuevo.
 - Los datos del centro solo (`centro.json`) salen del repositorio; se regeneran con `node tools/fetch-data.mjs centro`.
 
 ## Versión 0.19: escaparate

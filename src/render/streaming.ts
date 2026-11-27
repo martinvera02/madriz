@@ -33,16 +33,17 @@ export function splitByGrid(mesh: THREE.Mesh, cell: number): THREE.Mesh[] {
   if (cells.size < 2) return [mesh];
   const names = Object.keys(g.attributes);
   const out: THREE.Mesh[] = [];
+  // renumeración de vértices con arrays tipados (un Map por celda costaba cientos de MB con el mapa grande)
+  const remap = new Int32Array(pos.count).fill(-1);
   for (const tris of cells.values()) {
-    // vértices usados por la celda, renumerados
-    const remap = new Map<number, number>();
     const idx = new Uint32Array(tris.length * 3);
+    const used = new Uint32Array(tris.length * 3);
     let n = 0;
     for (let i = 0; i < tris.length; i++) {
       for (let k = 0; k < 3; k++) {
         const o = vi(tris[i], k);
-        let r = remap.get(o);
-        if (r === undefined) { r = n++; remap.set(o, r); }
+        let r = remap[o];
+        if (r < 0) { r = n++; remap[o] = r; used[r] = o; }
         idx[i * 3 + k] = r;
       }
     }
@@ -50,10 +51,12 @@ export function splitByGrid(mesh: THREE.Mesh, cell: number): THREE.Mesh[] {
     for (const name of names) {
       const a = g.attributes[name] as THREE.BufferAttribute;
       const Arr = (a.array as unknown as { constructor: new (n: number) => THREE.TypedArray }).constructor;
-      const arr = new Arr(n * a.itemSize);
-      for (const [o, r] of remap) for (let c = 0; c < a.itemSize; c++) arr[r * a.itemSize + c] = a.array[o * a.itemSize + c];
-      ng.setAttribute(name, new THREE.BufferAttribute(arr, a.itemSize, a.normalized));
+      const sz = a.itemSize, src = a.array;
+      const arr = new Arr(n * sz);
+      for (let r = 0; r < n; r++) { const o = used[r]; for (let c = 0; c < sz; c++) arr[r * sz + c] = src[o * sz + c]; }
+      ng.setAttribute(name, new THREE.BufferAttribute(arr, sz, a.normalized));
     }
+    for (let r = 0; r < n; r++) remap[used[r]] = -1;
     ng.setIndex(new THREE.BufferAttribute(n > 65535 ? idx : new Uint16Array(idx), 1));
     ng.computeBoundingSphere();
     ng.computeBoundingBox();
@@ -82,6 +85,8 @@ export function splitGroup(group: THREE.Object3D, cell: number) {
     const parent = me.parent!;
     parent.remove(me);
     for (const p of parts) parent.add(p);
+    // soltar ya los arrays de la malla original (si no, siguen vivos hasta acabar todo el grupo)
+    me.geometry = new THREE.BufferGeometry();
   }
 }
 
