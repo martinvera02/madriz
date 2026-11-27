@@ -45,6 +45,28 @@ Mando (mapeo estándar): RT/LT acelerar/frenar, stick izquierdo dirección/andar
 A freno de mano / saltar, X correr, Y subir/bajar, L3 o B claxon, R3 mirar atrás, Select enderezar,
 Start pausa, cruceta arriba primera / tercera persona.
 
+## Versión 0.14: interiores reales (1.ª tanda)
+
+Edificios emblemáticos en los que se entra **andando por su puerta**, sin pantallas de carga: el bloque de OSM se
+sustituye por un modelo propio sobre su planta real, con fachada, salas, pasillos, escaleras y gente.
+
+- **Mercado de San Miguel**: zócalo de granito con escalinatas en las puertas (la plaza está en cuesta), fachada de
+  hierro y cristal con parteluces y medallones en el friso, columnas de fundición, nave central más alta con
+  linterna acristalada y cerchas, cubierta de zinc. Dentro, 26 puestos con mostrador de mármol, vitrina, estantes,
+  marquesina con luz y su rótulo, cada uno con su género (jamones colgados, quesos, ostras y gambas sobre hielo,
+  fruta en pirámide, barricas de vermut, croquetas, aceitunas…), mesas altas en los pasillos, lámparas colgantes,
+  dependientes y clientela.
+- **Chocolatería San Ginés**: el edificio entero del pasadizo (con sus pisos, balcones y cornisa) y, en la planta
+  baja, el local: escaparate de madera verde con el rótulo dorado y terraza; salón de suelo ajedrezado con veladores
+  de mármol, bancadas de terciopelo verde, zócalo de madera, espejos con marco dorado y arañas de latón; barra de
+  mármol con las porras y las tazas de chocolate; obrador con la churrera y la rueda de churro en el aceite; aseos;
+  y la escalera que baja al **salón abovedado de ladrillo del sótano**.
+- Base técnica (`src/world/arch.ts`): muros con huecos (puertas, ventanas, arcos), forjados por los que se anda
+  (también por debajo de la calle), escaleras, bóvedas, techos para la cámara y mobiliario; cada pieza registra su
+  colisión con altura. El terreno se rebaja bajo estos edificios para que no asome en las salas.
+- Dentro, luz interior que acompaña al jugador y sonido amortiguado.
+- Ya no quedan árboles ni arbustos dentro de estanques y fuentes.
+
 ## Versión 0.13: agua
 
 - **Sistema de agua** (`src/world/water.ts`) a partir de los 237 polígonos de agua de OSM:

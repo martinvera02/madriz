@@ -11,7 +11,7 @@ import { CarwayIndex } from './spatial';
  * (p. ej. el Viaducto de Segovia sobre la calle Segovia).
  */
 export class Ground {
-  private decks: { ax: number; az: number; bx: number; bz: number; ha: number; hb: number; hw: number }[] = [];
+  private decks: { ax: number; az: number; bx: number; bz: number; ha: number; hb: number; hw: number; inner?: boolean }[] = [];
   private grid = new Map<string, number[]>();
 
   /** Sobreelevación de las aceras en cm, celdas de 1 m agrupadas en bloques de 64 m creados bajo demanda. */
@@ -31,9 +31,10 @@ export class Ground {
 
   constructor(readonly terrain: Terrain) {}
 
-  addDeckSegment(ax: number, az: number, bx: number, bz: number, ha: number, hb: number, halfWidth: number) {
+  /** `inner`: suelo de un edificio con interior: vale también bajo la cota de la calle (sótanos) y solo si ya estás encima. */
+  addDeckSegment(ax: number, az: number, bx: number, bz: number, ha: number, hb: number, halfWidth: number, inner = false) {
     const k = this.decks.length;
-    this.decks.push({ ax, az, bx, bz, ha, hb, hw: halfWidth });
+    this.decks.push({ ax, az, bx, bz, ha, hb, hw: halfWidth, inner });
     const x0 = Math.floor((Math.min(ax, bx) - halfWidth) / 20), x1 = Math.floor((Math.max(ax, bx) + halfWidth) / 20);
     const z0 = Math.floor((Math.min(az, bz) - halfWidth) / 20), z1 = Math.floor((Math.max(az, bz) + halfWidth) / 20);
     for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) {
@@ -68,6 +69,7 @@ export class Ground {
     const arr = this.grid.get(Math.floor(x / 20) + ',' + Math.floor(z / 20));
     if (!arr) return t;
     let best = t;
+    let inner = -Infinity;
     for (const k of arr) {
       const d = this.decks[k];
       const dx = d.bx - d.ax, dz = d.bz - d.az;
@@ -79,11 +81,16 @@ export class Ground {
       const px = d.ax + dx * u, pz = d.az + dz * u;
       if ((x - px) ** 2 + (z - pz) ** 2 > d.hw * d.hw) continue;
       const h = d.ha + (d.hb - d.ha) * u;
+      if (d.inner) {
+        // dentro de un edificio: el suelo sobre el que estás (o el de debajo si vienes de arriba), aunque quede bajo la calle
+        if (y === undefined ? h > inner : y > h - 0.6 && h > inner) inner = h;
+        continue;
+      }
       if (h <= t + 0.2) continue;
       // Sobre el tablero solo si venimos de arriba (o no sabemos la altura)
       if (y === undefined || y > h - 2.5) best = Math.max(best, h);
     }
-    return best;
+    return inner > -Infinity ? inner : best;
   }
 }
 

@@ -285,6 +285,8 @@ export function buildProps(data: WorldData, ground: Ground, collision: Collision
       for (let q = 0; q < n; q++) bushes.push({ x: x + (rng() - 0.5) * 2.5, z: z + (rng() - 0.5) * 2.5, s: 0.5 + rng() * 0.6 });
     }
   }
+  // tampoco arbustos dentro del agua
+  for (let k = bushes.length - 1; k >= 0; k--) if (inWater(bushes[k].x, bushes[k].z)) bushes.splice(k, 1);
   if (bushes.length) {
     const bushGeo = jitter(new THREE.IcosahedronGeometry(1, 0), 0.25, 5).scale(1.1, 0.75, 1.1).translate(0, 0.45, 0);
     const bm = new ChunkedInstances(bushGeo, swayMat(0xffffff));

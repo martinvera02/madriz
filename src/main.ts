@@ -36,6 +36,7 @@ import { Shops } from './systems/shops';
 import { Navigation, fmtDist, fmtEta } from './systems/navigation';
 import { WorldMap } from './ui/worldMap';
 import { Water } from './world/water';
+import { landmarkBuildings, buildLandmarks, cutTerrain, type Landmark } from './world/landmarkInteriors';
 import { DrawDistance, splitGroup, splitInstancedGroup } from './render/streaming';
 import type { MapIcon } from './ui/mapIcons';
 import { loadGame, saveGame, deleteGame, loadSettings, saveSettings, describeSaveTime, describePlayed, type SaveData } from './systems/save';
@@ -87,7 +88,16 @@ async function main() {
   if (roads.viaduct) scene.add(buildViaduct(roads.viaduct, terrain, collision));
 
   say(`Levantando ${data.buildings.length.toLocaleString('es-ES')} edificios…`); await frameYield();
-  const { group: bGroup, placed, specials, facades, roofSpots } = buildBuildings(data, terrain, collision, makeFacadeOverride(data), groundRes.minimap);
+  // edificios emblemáticos con interior recorrible: su bloque de OSM se sustituye por el modelo propio
+  const landmarkDefs = landmarkBuildings(data);
+  const baseOverride = makeFacadeOverride(data);
+  const { group: bGroup, placed, specials, facades, roofSpots } = buildBuildings(data, terrain, collision,
+    (b) => (landmarkDefs.has(b) ? { skip: true } : baseOverride(b)), groundRes.minimap);
+  say('Amueblando el Mercado de San Miguel y San Ginés…'); await frameYield();
+  const landmarks: Landmark[] = buildLandmarks(data, ground, collision, landmarkDefs);
+  for (const lm of landmarks) scene.add(lm.group);
+  // sin terreno bajo los edificios con interior (sótanos y escaleras)
+  cutTerrain(groundRes.group, landmarks.map((l) => ({ pts: l.footprint, floor: l.floor })));
   scene.add(bGroup);
   const roofProps = buildRoofProps(roofSpots);
   scene.add(roofProps);
@@ -159,6 +169,7 @@ async function main() {
   roofProps.traverse((o) => { o.castShadow = false; });
   const drawDist = new DrawDistance();
   let lodT = 0;
+  let lmInside: Landmark | null = null;
   // contar las dos pasadas (escena + sombra) y el posproceso de cada imagen juntos
   renderer.info.autoReset = false;
   let fpsN = 0, fpsT = 0, fpsLast = 0;
@@ -1008,6 +1019,7 @@ async function main() {
     if (nameTimer <= 0) {
       nameTimer = 0.5;
       if (inside) hud.setZone(inside.door.name, placeName(wfocus.x, wfocus.z));
+      else if (lmInside) hud.setZone(lmInside.name, placeName(focus.x, focus.z));
       else hud.setZone(placeName(focus.x, focus.z), `Madrid · ${Math.round(terrain.altitude(focus.x, focus.z))} m`);
     }
     hud.update(raw, sky.clock() + (timeBoost > 1 ? ` x${timeBoost}` : ''), v ? v.speed * 3.6 : null);
@@ -1038,6 +1050,27 @@ async function main() {
     ]);
 
     water.update(raw, sky.night);
+    // edificios con interior: gente dentro y luz interior que acompaña al jugador
+    {
+      const p = player.vehicle ? player.vehicle.pos : player.pos;
+      let inLm: Landmark | null = null;
+      for (const lm of landmarks) { lm.update(raw, p); if (!inLm && lm.inside(p.x, p.z, p.y)) inLm = lm; }
+      if (!inside) {
+        if (inLm) {
+          const fw = new THREE.Vector3(Math.sin(rig.yaw), 0, Math.cos(rig.yaw));
+          roomLights[0].position.set(p.x, p.y + 2.8, p.z);
+          roomLights[1].position.set(p.x - fw.x * 5, p.y + 2.6, p.z - fw.z * 5);
+          roomLights[0].intensity = 45; roomLights[1].intensity = 35;
+          roomLights[0].distance = roomLights[1].distance = 18;
+          audio.setIndoor(0.55);
+          lmInside = inLm;
+        } else if (lmInside) {
+          lmInside = null;
+          roomLights.forEach((l) => { l.intensity = 0; l.distance = 16; });
+          audio.setIndoor(0);
+        }
+      }
+    }
     drawDist.update(raw, camera.position, (scene.fog as THREE.Fog).far);
     if (settings.fps) {
       fpsN++; fpsT += clock.elapsedTime - fpsLast; fpsLast = clock.elapsedTime;
@@ -1060,7 +1093,7 @@ async function main() {
 
   // Depuración en consola
   (window as unknown as { __madriz: unknown }).__madriz = {
-    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, water, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
+    player, sky, traffic, peds, scene, renderer, camera, rig, retro, hud, combat, police, pickups, getMoney: () => money, landmarks, water, drawDist, nav, worldMap, toggleMap, setMoney: (n: number) => { money = n; }, missions, shops, routines, interiors, shopDoors, goInside, goOutside, getInside: () => inside, music: () => music, eAction, myCar, terrain, ground, data, collision, THREE, facades, lights, Vehicle, VEHICLE_TYPES, fx, audio, parked,
     start: () => { document.getElementById('start')!.classList.add('hidden'); started = true; },
     pause: () => openPause(), resume, save: () => doSave(false), load: () => { const sv = loadGame(); if (sv) applySave(sv); return !!sv; }, gather,
     /** Teletransporte a coordenadas del mapa (metros desde el Km 0). */

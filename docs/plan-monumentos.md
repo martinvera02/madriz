@@ -17,7 +17,7 @@ Coordenadas en metros del mapa (origen en el Kilómetro Cero, x hacia el este, z
 | 4 | Almudena, Puertas de Toledo y San Vicente, Colón | Modelos propios uno a uno |
 | 5 | Atocha y Príncipe Pío | Fachadas y entorno (glorietas, marquesinas, accesos) |
 | 6 | Más fachadas emblemáticas | Repaso de la lista de edificios con nombre |
-| 7 | Interiores nuevos | Cuando elijas cuáles (propuesta al final) |
+| 7 | Interiores emblemáticos | En curso: ✅ Mercado de San Miguel, ✅ Chocolatería San Ginés; faltan jardín de Atocha, azotea del Círculo, Almudena y Palacio Real |
 
 ---
 

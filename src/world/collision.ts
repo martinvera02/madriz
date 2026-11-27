@@ -6,7 +6,9 @@ export interface BoxCollider { kind: 'box'; minX: number; maxX: number; minZ: nu
 export interface CircleCollider { kind: 'circle'; x: number; z: number; r: number; h: number; y0?: number; }
 /** Pared fina entre dos puntos (aristas de los edificios reales). */
 export interface SegCollider { kind: 'seg'; ax: number; az: number; bx: number; bz: number; h: number; y0?: number; }
-export type Collider = BoxCollider | CircleCollider | SegCollider;
+/** Losa o techo horizontal girado (cuadrilátero convexo): solo cuenta para la cámara. */
+export interface QuadCollider { kind: 'quad'; p: number[]; h: number; y0: number; }
+export type Collider = BoxCollider | CircleCollider | SegCollider | QuadCollider;
 
 export interface Hit { nx: number; nz: number; depth: number; }
 
@@ -25,6 +27,8 @@ export class CollisionWorld {
   add(c: Collider) {
     const [minX, maxX, minZ, maxZ] = c.kind === 'box'
       ? [c.minX, c.maxX, c.minZ, c.maxZ]
+      : c.kind === 'quad'
+      ? [Math.min(c.p[0], c.p[2], c.p[4], c.p[6]), Math.max(c.p[0], c.p[2], c.p[4], c.p[6]), Math.min(c.p[1], c.p[3], c.p[5], c.p[7]), Math.max(c.p[1], c.p[3], c.p[5], c.p[7])]
       : c.kind === 'circle'
         ? [c.x - c.r, c.x + c.r, c.z - c.r, c.z + c.r]
         : [Math.min(c.ax, c.bx), Math.max(c.ax, c.bx), Math.min(c.az, c.bz), Math.max(c.az, c.bz)];
@@ -72,6 +76,7 @@ export class CollisionWorld {
     for (let iter = 0; iter < 3; iter++) {
       let any = false;
       for (const c of this.query(pos.x, pos.z, r + 1)) {
+        if (c.kind === 'quad') continue;
         if (c.h <= y + 0.35) continue; // se puede pasar por encima (bordillos, saltos)
         if (c.y0 !== undefined && y + 1.6 < c.y0) continue; // se puede pasar por debajo
         const h = c.kind === 'box' ? pushBox(pos, r, c) : c.kind === 'circle' ? pushCircle(pos, r, c) : pushSeg(pos, r, c);
@@ -98,6 +103,16 @@ export class CollisionWorld {
         if (segDist2(x, z, c) < 0.25) return true;
         continue;
       }
+      if (c.kind === 'quad') {
+        let pos = 0, neg = 0;
+        for (let k = 0; k < 4; k++) {
+          const qx = c.p[k * 2], qz = c.p[k * 2 + 1], rx = c.p[((k + 1) % 4) * 2], rz = c.p[((k + 1) % 4) * 2 + 1];
+          const cr = (rx - qx) * (z - qz) - (rz - qz) * (x - qx);
+          if (cr > 0) pos++; else if (cr < 0) neg++;
+        }
+        if (pos === 0 || neg === 0) return true;
+        continue;
+      }
       if (c.kind === 'box') {
         if (x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ) return true;
       } else if ((x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r) return true;
@@ -109,7 +124,7 @@ export class CollisionWorld {
   groundHeight(x: number, z: number, y: number, floor = 0): number {
     let g = floor;
     for (const c of this.query(x, z, 0.3)) {
-      if (c.h > y + 0.35 || c.kind === 'seg') continue;
+      if (c.h > y + 0.35 || c.kind === 'seg' || c.kind === 'quad') continue;
       const inside = c.kind === 'box'
         ? x > c.minX && x < c.maxX && z > c.minZ && z < c.maxZ
         : (x - c.x) ** 2 + (z - c.z) ** 2 < c.r * c.r;
