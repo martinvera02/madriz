@@ -125,7 +125,7 @@ export class WorldMap {
   }
   private zoomAt(k: number, sx: number, sy: number) {
     const [wx, wz] = this.toWorld(sx, sy);
-    this.zoom = Math.max(0.18, Math.min(4, this.zoom * k));
+    this.zoom = Math.max(0.06, Math.min(4, this.zoom * k)); // 0,06: cabe la ciudad entera (9 km de sur a norte)
     // mantener bajo el ratón el mismo punto del mundo
     this.cx = wx - (sx - this.cv.width / 2) / this.zoom;
     this.cz = wz - (sy - this.cv.height / 2) / this.zoom;
